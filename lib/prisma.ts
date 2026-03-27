@@ -12,7 +12,7 @@ function createPrismaClient() {
   }
 
   const runtimeRequire = eval("require") as NodeRequire
-  const adapterModule = runtimeRequire("@prisma/adapter-libsql") as {
+  const adapterModule = runtimeRequire("@prisma/adapter-libsql/dist/index-node.js") as {
     PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown
     default?:
       | { PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown }
