@@ -1,53 +1,60 @@
-import { prisma } from "@/lib/prisma"
-import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
+import { NextResponse } from "next/server"
+import { z } from "zod"
+
+import { prisma } from "@/lib/prisma"
+
+const registerSchema = z
+  .object({
+    name: z.string().trim().min(1, "名前を入力してください。").max(100, "名前が長すぎます。"),
+    email: z.string().trim().email("正しいメールアドレスを入力してください。"),
+    password: z.string().min(8, "パスワードは8文字以上で入力してください。"),
+    confirmPassword: z.string().min(1, "確認用パスワードを入力してください。"),
+  })
+  .refine((input) => input.password === input.confirmPassword, {
+    message: "確認用パスワードが一致していません。",
+    path: ["confirmPassword"],
+  })
 
 export async function POST(request: Request) {
   try {
-    const { email, password, confirmPassword, name } = await request.json()
+    const body = await request.json()
+    const parsed = registerSchema.safeParse(body)
 
-    // ベーシックなバリデーション
-    if (!email || !password || !name) {
-      return NextResponse.json({ error: "必須項目が不足しています" }, { status: 400 })
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || "入力内容が不正です。" }, { status: 400 })
     }
 
-    if (password !== confirmPassword) {
-      return NextResponse.json({ error: "パスワードが一致しません" }, { status: 400 })
-    }
+    const email = parsed.data.email.toLowerCase()
 
-    if (password.length < 6) {
-      return NextResponse.json({ error: "パスワードは6文字以上で入力してください" }, { status: 400 })
-    }
-
-    // 既存ユーザーチェック
     const existingUser = await prisma.user.findUnique({
       where: { email },
+      select: { id: true },
     })
 
     if (existingUser) {
-      return NextResponse.json({ error: "このメールアドレスは既に登録されています" }, { status: 400 })
+      return NextResponse.json({ error: "このメールアドレスはすでに登録されています。" }, { status: 409 })
     }
 
-    // パスワードのハッシュ化
-    const hashedPassword = await bcrypt.hash(password, 10)
+    const hashedPassword = await bcrypt.hash(parsed.data.password, 12)
 
-    // ユーザー作成
     const user = await prisma.user.create({
       data: {
+        name: parsed.data.name,
         email,
-        name,
         password: hashedPassword,
         role: "user",
       },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+      },
     })
 
-    return NextResponse.json({ 
-      success: true, 
-      user: { id: user.id, email: user.email, name: user.name } 
-    })
-
-  } catch (error: any) {
+    return NextResponse.json({ success: true, user }, { status: 201 })
+  } catch (error) {
     console.error("Registration Error:", error)
-    return NextResponse.json({ error: "登録中にエラーが発生しました" }, { status: 500 })
+    return NextResponse.json({ error: "会員登録中にエラーが発生しました。" }, { status: 500 })
   }
 }

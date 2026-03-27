@@ -1,27 +1,42 @@
-import { prisma } from "@/lib/prisma"
-import { NextResponse } from "next/server"
 import bcrypt from "bcryptjs"
+import { NextResponse } from "next/server"
+import { z } from "zod"
+
+import { prisma } from "@/lib/prisma"
+
+const loginSchema = z.object({
+  email: z.string().trim().email("正しいメールアドレスを入力してください。"),
+  password: z.string().min(1, "パスワードを入力してください。"),
+})
 
 export async function POST(request: Request) {
   try {
-    const { email, password } = await request.json()
+    const body = await request.json()
+    const parsed = loginSchema.safeParse(body)
 
-    if (!email || !password) {
-      return NextResponse.json({ error: "メールアドレスとパスワードを入力してください" }, { status: 400 })
+    if (!parsed.success) {
+      return NextResponse.json({ error: parsed.error.issues[0]?.message || "入力内容が不正です。" }, { status: 400 })
     }
 
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { email: parsed.data.email.toLowerCase() },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        password: true,
+      },
     })
 
-    if (!user || !user.password) {
-      return NextResponse.json({ error: "ユーザーが見つからないか、パスワードが設定されていません" }, { status: 401 })
+    if (!user?.password) {
+      return NextResponse.json({ error: "メールアドレスまたはパスワードが正しくありません。" }, { status: 401 })
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password)
+    const isPasswordValid = await bcrypt.compare(parsed.data.password, user.password)
 
     if (!isPasswordValid) {
-      return NextResponse.json({ error: "メールアドレスまたはパスワードが正しくありません" }, { status: 401 })
+      return NextResponse.json({ error: "メールアドレスまたはパスワードが正しくありません。" }, { status: 401 })
     }
 
     return NextResponse.json({
@@ -31,11 +46,10 @@ export async function POST(request: Request) {
         email: user.email,
         name: user.name,
         role: user.role,
-      }
+      },
     })
-
-  } catch (error: any) {
+  } catch (error) {
     console.error("Login Error:", error)
-    return NextResponse.json({ error: "ログイン中にエラーが発生しました" }, { status: 500 })
+    return NextResponse.json({ error: "ログイン中にエラーが発生しました。" }, { status: 500 })
   }
 }
