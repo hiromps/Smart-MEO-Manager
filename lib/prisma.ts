@@ -1,5 +1,8 @@
-import { PrismaLibSql } from "@prisma/adapter-libsql"
+import { createRequire } from "node:module"
 import { PrismaClient } from "@prisma/client"
+
+const require = createRequire(import.meta.url)
+const { PrismaLibSql } = require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql")
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient
