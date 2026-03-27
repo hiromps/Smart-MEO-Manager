@@ -1,43 +1,56 @@
-import { createRequire } from "node:module"
 import { PrismaClient } from "@prisma/client"
-
-const require = createRequire(import.meta.url)
-const adapterModule = require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql") & {
-  default?: typeof import("@prisma/adapter-libsql") | { PrismaLibSql?: unknown }
-}
-const PrismaLibSql =
-  adapterModule.PrismaLibSql ||
-  (typeof adapterModule.default === "object" && adapterModule.default
-    ? (adapterModule.default as { PrismaLibSql?: typeof adapterModule.PrismaLibSql }).PrismaLibSql
-    : undefined) ||
-  adapterModule.default
-
-if (typeof PrismaLibSql !== "function") {
-  throw new Error("Failed to load Prisma libsql adapter.")
-}
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient
 }
 
-const connectionString = process.env.DATABASE_URL || process.env.TURSO_DATABASE_URL
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL || process.env.TURSO_DATABASE_URL
 
-if (!connectionString) {
-  throw new Error("DATABASE_URL is not configured.")
-}
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not configured.")
+  }
 
-const adapter = new PrismaLibSql({
-  url: connectionString,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-})
+  const runtimeRequire = eval("require") as NodeRequire
+  const adapterModule = runtimeRequire("@prisma/adapter-libsql") as {
+    PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown
+    default?:
+      | { PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown }
+      | (new (config: { url: string; authToken?: string }) => unknown)
+  }
+  const PrismaLibSql =
+    adapterModule.PrismaLibSql ||
+    (typeof adapterModule.default === "object" && adapterModule.default
+      ? adapterModule.default.PrismaLibSql
+      : undefined) ||
+    (typeof adapterModule.default === "function" ? adapterModule.default : undefined)
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+  if (typeof PrismaLibSql !== "function") {
+    throw new Error("Failed to load Prisma libsql adapter.")
+  }
+
+  const adapter = new PrismaLibSql({
+    url: connectionString,
+    authToken: process.env.TURSO_AUTH_TOKEN,
+  })
+
+  return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   })
-
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma
 }
+
+export function getPrisma() {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient()
+  }
+
+  return globalForPrisma.prisma
+}
+
+export const prisma = new Proxy({} as PrismaClient, {
+  get(_target, property, receiver) {
+    const value = Reflect.get(getPrisma(), property, receiver)
+    return typeof value === "function" ? value.bind(getPrisma()) : value
+  },
+})
