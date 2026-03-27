@@ -12,60 +12,65 @@ const credentialsSchema = z.object({
   password: z.string().min(1),
 })
 
+const googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
+const credentialsProvider = Credentials({
+  name: "credentials",
+  credentials: {
+    email: { label: "Email", type: "email" },
+    password: { label: "Password", type: "password" },
+  },
+  authorize: async (credentials) => {
+    const parsed = credentialsSchema.safeParse(credentials)
+
+    if (!parsed.success) {
+      return null
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email.toLowerCase() },
+    })
+
+    if (!user?.password) {
+      return null
+    }
+
+    const isPasswordValid = await bcrypt.compare(parsed.data.password, user.password)
+
+    if (!isPasswordValid) {
+      return null
+    }
+
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      image: user.image,
+    }
+  },
+})
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: "jwt",
   },
-  providers: [
-    Credentials({
-      name: "credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      authorize: async (credentials) => {
-        const parsed = credentialsSchema.safeParse(credentials)
-
-        if (!parsed.success) {
-          return null
-        }
-
-        const user = await prisma.user.findUnique({
-          where: { email: parsed.data.email.toLowerCase() },
-        })
-
-        if (!user?.password) {
-          return null
-        }
-
-        const isPasswordValid = await bcrypt.compare(parsed.data.password, user.password)
-
-        if (!isPasswordValid) {
-          return null
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          image: user.image,
-        }
-      },
-    }),
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      authorization: {
-        params: {
-          scope: "openid email profile https://www.googleapis.com/auth/business.manage",
-          access_type: "offline",
-          prompt: "consent",
-        },
-      },
-    }),
-  ],
+  providers: googleAuthEnabled
+    ? [
+        credentialsProvider,
+        Google({
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          authorization: {
+            params: {
+              scope: "openid email profile https://www.googleapis.com/auth/business.manage",
+              access_type: "offline",
+              prompt: "consent",
+            },
+          },
+        }),
+      ]
+    : [credentialsProvider],
   callbacks: {
     async jwt({ token, user }) {
       if (user) {

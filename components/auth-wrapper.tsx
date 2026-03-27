@@ -32,9 +32,10 @@ export function useAuth() {
 
 interface AuthWrapperProps {
   children: ReactNode
+  googleAuthEnabled: boolean
 }
 
-export function AuthWrapper({ children }: AuthWrapperProps) {
+export function AuthWrapper({ children, googleAuthEnabled }: AuthWrapperProps) {
   const { data: session, status } = useSession()
 
   const user = useMemo<AuthUser | null>(() => {
@@ -83,7 +84,7 @@ export function AuthWrapper({ children }: AuthWrapperProps) {
   if (!user) {
     return (
       <AuthContext.Provider value={{ user: null, isAuthenticated: false, logout }}>
-        <LoginForm onLogin={login} onGoogleLogin={loginWithGoogle} />
+        <LoginForm onLogin={login} onGoogleLogin={googleAuthEnabled ? loginWithGoogle : undefined} />
       </AuthContext.Provider>
     )
   }

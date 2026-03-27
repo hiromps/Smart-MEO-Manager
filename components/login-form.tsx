@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/spinner"
 
 interface LoginFormProps {
   onLogin: (email: string, password: string) => Promise<void>
-  onGoogleLogin: () => Promise<void>
+  onGoogleLogin?: () => Promise<void>
 }
 
 export function LoginForm({ onLogin, onGoogleLogin }: LoginFormProps) {
@@ -90,6 +90,10 @@ export function LoginForm({ onLogin, onGoogleLogin }: LoginFormProps) {
   }
 
   const handleGoogleButtonClick = async () => {
+    if (!onGoogleLogin) {
+      return
+    }
+
     resetMessages()
     setIsLoading(true)
 
@@ -217,7 +221,7 @@ export function LoginForm({ onLogin, onGoogleLogin }: LoginFormProps) {
               </Button>
             </form>
 
-            {!isRegister ? (
+            {!isRegister && onGoogleLogin ? (
               <>
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
