@@ -2,7 +2,19 @@ import { createRequire } from "node:module"
 import { PrismaClient } from "@prisma/client"
 
 const require = createRequire(import.meta.url)
-const { PrismaLibSql } = require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql")
+const adapterModule = require("@prisma/adapter-libsql") as typeof import("@prisma/adapter-libsql") & {
+  default?: typeof import("@prisma/adapter-libsql") | { PrismaLibSql?: unknown }
+}
+const PrismaLibSql =
+  adapterModule.PrismaLibSql ||
+  (typeof adapterModule.default === "object" && adapterModule.default
+    ? (adapterModule.default as { PrismaLibSql?: typeof adapterModule.PrismaLibSql }).PrismaLibSql
+    : undefined) ||
+  adapterModule.default
+
+if (typeof PrismaLibSql !== "function") {
+  throw new Error("Failed to load Prisma libsql adapter.")
+}
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient
