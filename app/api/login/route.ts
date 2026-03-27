@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { getTursoUserByEmail } from "@/lib/turso-auth"
+import { prisma } from "@/lib/prisma"
 
 const loginSchema = z.object({
   email: z.string().trim().email("正しいメールアドレスを入力してください。"),
@@ -18,7 +18,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || "入力内容が不正です。" }, { status: 400 })
     }
 
-    const user = await getTursoUserByEmail(parsed.data.email)
+    const user = await prisma.user.findUnique({
+      where: { email: parsed.data.email.toLowerCase() },
+    })
 
     if (!user?.password) {
       return NextResponse.json({ error: "メールアドレスまたはパスワードが正しくありません。" }, { status: 401 })

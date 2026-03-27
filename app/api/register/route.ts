@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { createTursoUser, getTursoUserByEmail } from "@/lib/turso-auth"
+import { prisma } from "@/lib/prisma"
 
 const registerSchema = z
   .object({
@@ -27,7 +27,9 @@ export async function POST(request: Request) {
 
     const email = parsed.data.email.toLowerCase()
 
-    const existingUser = await getTursoUserByEmail(email)
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+    })
 
     if (existingUser) {
       return NextResponse.json({ error: "このメールアドレスはすでに登録されています。" }, { status: 409 })
@@ -35,10 +37,13 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(parsed.data.password, 12)
 
-    const user = await createTursoUser({
-      name: parsed.data.name,
-      email,
-      passwordHash: hashedPassword,
+    const user = await prisma.user.create({
+      data: {
+        name: parsed.data.name,
+        email,
+        password: hashedPassword,
+        role: "user",
+      },
     })
 
     return NextResponse.json(
