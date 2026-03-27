@@ -63,9 +63,8 @@ export function LoginForm({ onLogin, onGoogleLogin }: LoginFormProps) {
       throw new Error(data.error || "会員登録に失敗しました。")
     }
 
-    setSuccess("会員登録が完了しました。続けてログインしてください。")
-    setIsRegister(false)
-    resetPasswordFields()
+    await onLogin(email, password)
+    setSuccess("会員登録が完了しました。ログインしました。")
   }
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
