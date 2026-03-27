@@ -6,6 +6,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter"
 import { z } from "zod"
 
 import { prisma } from "@/lib/prisma"
+import { getTursoUserByEmail } from "@/lib/turso-auth"
 
 const credentialsSchema = z.object({
   email: z.string().trim().email(),
@@ -31,9 +32,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: parsed.data.email.toLowerCase() },
-        })
+        const user = await getTursoUserByEmail(parsed.data.email)
 
         if (!user?.password) {
           return null

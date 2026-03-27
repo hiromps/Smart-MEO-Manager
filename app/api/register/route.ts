@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs"
 import { NextResponse } from "next/server"
 import { z } from "zod"
 
-import { prisma } from "@/lib/prisma"
+import { createTursoUser, getTursoUserByEmail } from "@/lib/turso-auth"
 
 const registerSchema = z
   .object({
@@ -27,10 +27,7 @@ export async function POST(request: Request) {
 
     const email = parsed.data.email.toLowerCase()
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
-    })
+    const existingUser = await getTursoUserByEmail(email)
 
     if (existingUser) {
       return NextResponse.json({ error: "このメールアドレスはすでに登録されています。" }, { status: 409 })
@@ -38,21 +35,23 @@ export async function POST(request: Request) {
 
     const hashedPassword = await bcrypt.hash(parsed.data.password, 12)
 
-    const user = await prisma.user.create({
-      data: {
-        name: parsed.data.name,
-        email,
-        password: hashedPassword,
-        role: "user",
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-      },
+    const user = await createTursoUser({
+      name: parsed.data.name,
+      email,
+      passwordHash: hashedPassword,
     })
 
-    return NextResponse.json({ success: true, user }, { status: 201 })
+    return NextResponse.json(
+      {
+        success: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+        },
+      },
+      { status: 201 }
+    )
   } catch (error) {
     console.error("Registration Error:", error)
     return NextResponse.json({ error: "会員登録中にエラーが発生しました。" }, { status: 500 })
