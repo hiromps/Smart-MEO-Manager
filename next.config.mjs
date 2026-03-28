@@ -1,4 +1,17 @@
+const libsqlPackageTraceIncludes = [
+  "./node_modules/@prisma/adapter-libsql/**/*",
+  "./node_modules/@libsql/client/**/*",
+  "./node_modules/@libsql/core/**/*",
+  "./node_modules/@libsql/hrana-client/**/*",
+  "./node_modules/@libsql/isomorphic-fetch/**/*",
+  "./node_modules/@libsql/isomorphic-ws/**/*",
+  "./node_modules/libsql/**/*",
+  "./node_modules/js-base64/**/*",
+  "./node_modules/promise-limit/**/*",
+]
+
 const libsqlTraceIncludes = [
+  ...libsqlPackageTraceIncludes,
   "./node_modules/.pnpm/@prisma+adapter-libsql@6.19.2/node_modules/@prisma/adapter-libsql/dist/**/*",
   "./node_modules/.pnpm/@prisma+adapter-libsql@6.19.2/node_modules/@prisma/adapter-libsql/package.json",
   "./node_modules/.pnpm/@libsql+client@0.17.2/node_modules/@libsql/client/**/*",
