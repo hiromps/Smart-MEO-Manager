@@ -1,11 +1,11 @@
-import { auth } from "@/lib/auth"
+import { getAuth0User } from "@/lib/auth0-user"
 import { getGbpPerformance } from "@/lib/google-business-api"
 import { NextResponse } from "next/server"
 
 export async function GET(request: Request) {
-  const session = await auth()
-  
-  if (!session || !session.user?.id) {
+  const user = await getAuth0User()
+
+  if (!user?.sub) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   ]
 
   try {
-    const stats = await getGbpPerformance(session.user.id, locationId, metrics, startDate, endDate)
+    const stats = await getGbpPerformance(user.sub, locationId, metrics, startDate, endDate)
     return NextResponse.json(stats)
   } catch (error: any) {
     console.error("Stats API Error:", error)

@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client"
+import { PrismaLibSQL } from "@prisma/adapter-libsql"
 
 const globalForPrisma = globalThis as typeof globalThis & {
   prisma?: PrismaClient
@@ -11,25 +12,7 @@ function createPrismaClient() {
     throw new Error("DATABASE_URL is not configured.")
   }
 
-  const runtimeRequire = eval("require") as NodeRequire
-  const adapterModule = runtimeRequire("@prisma/adapter-libsql/dist/index-node.js") as {
-    PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown
-    default?:
-      | { PrismaLibSql?: new (config: { url: string; authToken?: string }) => unknown }
-      | (new (config: { url: string; authToken?: string }) => unknown)
-  }
-  const PrismaLibSql =
-    adapterModule.PrismaLibSql ||
-    (typeof adapterModule.default === "object" && adapterModule.default
-      ? adapterModule.default.PrismaLibSql
-      : undefined) ||
-    (typeof adapterModule.default === "function" ? adapterModule.default : undefined)
-
-  if (typeof PrismaLibSql !== "function") {
-    throw new Error("Failed to load Prisma libsql adapter.")
-  }
-
-  const adapter = new PrismaLibSql({
+  const adapter = new PrismaLibSQL({
     url: connectionString,
     authToken: process.env.TURSO_AUTH_TOKEN,
   })

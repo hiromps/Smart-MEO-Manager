@@ -1,6 +1,7 @@
 "use client"
 
-import { createContext, ReactNode, useContext, useMemo } from "react"
+import { createContext, ReactNode, useContext, useEffect, useMemo } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { signIn, signOut, useSession } from "next-auth/react"
 
 import { LoginForm } from "@/components/login-form"
@@ -33,10 +34,13 @@ export function useAuth() {
 interface AuthWrapperProps {
   children: ReactNode
   googleAuthEnabled: boolean
+  redirectAuthenticatedTo?: string
 }
 
-export function AuthWrapper({ children, googleAuthEnabled }: AuthWrapperProps) {
+export function AuthWrapper({ children, googleAuthEnabled, redirectAuthenticatedTo }: AuthWrapperProps) {
   const { data: session, status } = useSession()
+  const router = useRouter()
+  const pathname = usePathname()
 
   const user = useMemo<AuthUser | null>(() => {
     if (!session?.user?.id || !session.user.email) {
@@ -51,6 +55,14 @@ export function AuthWrapper({ children, googleAuthEnabled }: AuthWrapperProps) {
     }
   }, [session])
 
+  useEffect(() => {
+    if (!user || !redirectAuthenticatedTo || pathname === redirectAuthenticatedTo) {
+      return
+    }
+
+    router.replace(redirectAuthenticatedTo)
+  }, [pathname, redirectAuthenticatedTo, router, user])
+
   const logout = async () => {
     await signOut({ callbackUrl: "/" })
   }
@@ -60,15 +72,18 @@ export function AuthWrapper({ children, googleAuthEnabled }: AuthWrapperProps) {
       email,
       password,
       redirect: false,
+      callbackUrl: "/dashboard",
     })
 
     if (!result || result.error) {
       throw new Error("メールアドレスまたはパスワードが正しくありません。")
     }
+
+    router.replace(result.url ?? "/dashboard")
   }
 
   const loginWithGoogle = async () => {
-    await signIn("google", { callbackUrl: "/" })
+    await signIn("google", { callbackUrl: "/dashboard" })
   }
 
   if (status === "loading") {

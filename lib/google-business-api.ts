@@ -14,7 +14,7 @@ export async function getGbpLocations(userId: string) {
   })
 
   if (!account?.access_token) {
-    throw new Error("Google アカウント連携が必要です。")
+    throw new Error("Google アカウントのアクセストークンが見つかりません。")
   }
 
   oauth2Client.setCredentials({
@@ -66,7 +66,7 @@ export async function getGbpPerformance(
   })
 
   if (!account?.access_token) {
-    throw new Error("Google アカウント連携が必要です。")
+    throw new Error("Google アカウントのアクセストークンが見つかりません。")
   }
 
   oauth2Client.setCredentials({
