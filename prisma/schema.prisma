@@ -1,103 +1,178 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
-}
-
-// Auth.js (NextAuth) models
-model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?
-  access_token       String?
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?
-  session_state      String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([provider, providerAccountId])
-}
-
-model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider = "postgresql"
 }
 
 model User {
-  id            String    @id @default(cuid())
-  auth0Sub      String?   @unique
+  id            String   @id @default(cuid())
+  clerkId       String   @unique
+  email         String   @unique
   name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  role          String    @default("user")
-  password      String?
-  accounts      Account[]
-  sessions      Session[]
-  locations     BusinessLocation[]
+  imageUrl      String?
+  role          UserRole @default(USER)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  members       Member[]
 }
 
-model VerificationToken {
-  identifier String
-  token      String   @unique
-  expires    DateTime
-
-  @@unique([identifier, token])
+model Organization {
+  id            String   @id @default(cuid())
+  clerkId       String   @unique // Clerk's organization id
+  name          String
+  slug          String   @unique
+  imageUrl      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  members           Member[]
+  googleAccounts    GoogleAccount[]
+  businessLocations BusinessLocation[]
+  replyTemplates    ReplyTemplate[]
 }
 
-// GBP specific models
+model Member {
+  id             String       @id @default(cuid())
+  userId         String
+  organizationId String
+  role           MemberRole   @default(MEMBER)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model GoogleAccount {
+  id               String       @id @default(cuid())
+  organizationId   String
+  googleId         String
+  email            String
+  accessToken      String       // TODO: 本番では暗号化を検討
+  refreshToken     String?      // TODO: 本番では暗号化を検討
+  expiresAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  locations        BusinessLocation[]
+
+  @@unique([organizationId, googleId])
+  @@index([organizationId])
+}
+
 model BusinessLocation {
-  id                String   @id @default(cuid())
-  googleLocationId  String   @unique
-  name              String
-  address           String?
-  phone             String?
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  metrics           PerformanceMetric[]
-  reviews           Review[]
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-}
+  id               String       @id @default(cuid())
+  organizationId   String
+  googleAccountId  String
+  googleLocationId String       // Google側のLocation ID
+  name             String
+  address          String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
-model PerformanceMetric {
-  id                String   @id @default(cuid())
-  locationId        String
-  date              DateTime
-  searches          Int      @default(0)
-  views             Int      @default(0)
-  websiteClicks     Int      @default(0)
-  phoneCalls        Int      @default(0)
-  directionRequests Int      @default(0)
-  location          BusinessLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  googleAccount    GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
+  reviews          Review[]
 
-  @@unique([locationId, date])
+  @@unique([organizationId, googleLocationId])
+  @@index([organizationId])
+  @@index([googleAccountId])
 }
 
 model Review {
-  id                String   @id @default(cuid())
-  locationId        String
-  googleReviewId    String   @unique
-  reviewerName      String
-  rating            Int
-  comment           String?
-  postedAt          DateTime
-  replyText         String?
-  repliedAt         DateTime?
-  location          BusinessLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  id               String       @id @default(cuid())
+  locationId       String
+  googleReviewId   String       @unique // Google側のReview ID
+  starRating       Int          // 1-5
+  comment          String?      @db.Text
+  reviewerName     String
+  createTime       DateTime
+  updateTime       DateTime?
+  replyStatus      ReplyStatus  @default(UNANSWERED)
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  location         BusinessLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  reply            ReviewReply?
+  aiDrafts         AIReplyDraft[]
+
+  @@index([locationId])
+  @@index([replyStatus])
+}
+
+model ReviewReply {
+  id               String       @id @default(cuid())
+  reviewId         String       @unique
+  comment          String       @db.Text
+  updateTime       DateTime
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  review           Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+}
+
+model AIReplyDraft {
+  id               String       @id @default(cuid())
+  reviewId         String
+  draftContent     String       @db.Text
+  status           DraftStatus  @default(PENDING) // PENDING, APPROVED, REJECTED
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  review           Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId])
+}
+
+model ReplyTemplate {
+  id               String       @id @default(cuid())
+  organizationId   String
+  name             String
+  content          String       @db.Text
+  targetStarRating Int?         // 紐付ける星の数（nullなら汎用など）
+  isActive         Boolean      @default(true)
+  
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+  READONLY
+}
+
+enum ReplyStatus {
+  UNANSWERED
+  ANSWERED
+  PENDING_APPROVAL
+}
+
+enum DraftStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

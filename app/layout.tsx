@@ -1,15 +1,17 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { ClerkProvider } from '@clerk/nextjs'
+import { jaJP } from '@clerk/localizations'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SMM - プロフェッショナルMEO管理ツール",
-  description: "Googleビジネスプロフィールの運用・分析をAIで効率化",
-  generator: 'v0.app',
+  title: 'Smart MEO Manager - AI口コミ管理ダッシュボード',
+  description: 'Googleビジネスプロフィールの口コミをAIで効率的に管理',
+
   icons: {
     icon: [
       {
@@ -35,11 +37,25 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <body className="font-sans antialiased">
-        {children}
-        <Analytics />
-      </body>
-    </html>
+    <ClerkProvider
+      localization={jaJP}
+      appearance={{
+        variables: {
+          colorPrimary: '#00B26E',
+          colorTextOnPrimaryBackground: '#ffffff',
+        },
+        elements: {
+          formButtonPrimary: 'bg-[#00B26E] hover:bg-[#00945C]',
+          card: 'shadow-lg',
+        },
+      }}
+    >
+      <html lang="ja">
+        <body className="font-sans antialiased">
+          {children}
+          <Analytics />
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

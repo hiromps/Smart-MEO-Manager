@@ -1,95 +1,47 @@
-import bcrypt from "bcryptjs"
-import NextAuth from "next-auth"
-import Credentials from "next-auth/providers/credentials"
-import Google from "next-auth/providers/google"
-import { PrismaAdapter } from "@auth/prisma-adapter"
-import { z } from "zod"
+import { auth } from "@clerk/nextjs/server";
+import { db } from "./db";
 
-import { prisma } from "@/lib/prisma"
+/**
+ * 現在のセッションからテナント(Organization)とユーザー情報を取得するユーティリティ
+ * 全てのServer Actions / API Routesでこれを呼び出し、テナントのコンテキストを確定させます。
+ */
+export async function requireOrgContext() {
+  const session = await auth();
 
-const credentialsSchema = z.object({
-  email: z.string().trim().email(),
-  password: z.string().min(1),
-})
+  if (!session.userId) {
+    throw new Error("Unauthorized");
+  }
 
-const googleAuthEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-const credentialsProvider = Credentials({
-  name: "credentials",
-  credentials: {
-    email: { label: "Email", type: "email" },
-    password: { label: "Password", type: "password" },
-  },
-  authorize: async (credentials) => {
-    const parsed = credentialsSchema.safeParse(credentials)
+  // B2B SaaSのため、Organizationが選択されていない場合はエラーにする（または選択画面へリダイレクト）
+  if (!session.orgId) {
+    throw new Error("Organization selection is required");
+  }
 
-    if (!parsed.success) {
-      return null
-    }
-
-    const user = await prisma.user.findUnique({
-      where: { email: parsed.data.email.toLowerCase() },
-    })
-
-    if (!user?.password) {
-      return null
-    }
-
-    const isPasswordValid = await bcrypt.compare(parsed.data.password, user.password)
-
-    if (!isPasswordValid) {
-      return null
-    }
-
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      image: user.image,
-    }
-  },
-})
-
-export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
-  session: {
-    strategy: "jwt",
-  },
-  providers: googleAuthEnabled
-    ? [
-        credentialsProvider,
-        Google({
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          authorization: {
-            params: {
-              scope: "openid email profile https://www.googleapis.com/auth/business.manage",
-              access_type: "offline",
-              prompt: "consent",
-            },
-          },
-        }),
-      ]
-    : [credentialsProvider],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id
-        token.role = user.role ?? "user"
-        token.email = user.email ?? token.email
-        token.name = user.name ?? token.name
-        token.picture = user.image ?? token.picture
-      }
-
-      return token
+  // DB上で該当のOrganizationとUserが存在するか、および権限を確認
+  const member = await db.member.findFirst({
+    where: {
+      user: {
+        clerkId: session.userId,
+      },
+      organization: {
+        clerkId: session.orgId,
+      },
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = typeof token.id === "string" ? token.id : ""
-        session.user.role = typeof token.role === "string" ? token.role : "user"
-      }
-
-      return session
+    include: {
+      organization: true,
+      user: true,
     },
-  },
-})
+  });
+
+  if (!member) {
+    throw new Error("You do not have access to this organization");
+  }
+
+  return {
+    userId: member.user.id,
+    clerkUserId: session.userId,
+    organizationId: member.organization.id,
+    clerkOrgId: session.orgId,
+    role: member.role,
+  };
+}
