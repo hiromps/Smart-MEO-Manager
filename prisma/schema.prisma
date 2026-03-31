@@ -1,8 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -12,168 +7,146 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id            String   @id @default(cuid())
-  clerkId       String   @unique
-  email         String   @unique
-  name          String?
-  imageUrl      String?
-  role          UserRole @default(USER)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  members       Member[]
-}
-
-model Organization {
-  id            String   @id @default(cuid())
-  clerkId       String   @unique // Clerk's organization id
-  name          String
-  slug          String   @unique
-  imageUrl      String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  members           Member[]
-  googleAccounts    GoogleAccount[]
-  businessLocations BusinessLocation[]
-  replyTemplates    ReplyTemplate[]
-}
-
-model Member {
-  id             String       @id @default(cuid())
-  userId         String
-  organizationId String
-  role           MemberRole   @default(MEMBER)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  @@unique([userId, organizationId])
-  @@index([userId])
-  @@index([organizationId])
-}
-
-model GoogleAccount {
-  id               String       @id @default(cuid())
-  organizationId   String
-  googleId         String
-  email            String
-  accessToken      String       // TODO: 本番では暗号化を検討
-  refreshToken     String?      // TODO: 本番では暗号化を検討
-  expiresAt        DateTime?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  locations        BusinessLocation[]
-
-  @@unique([organizationId, googleId])
-  @@index([organizationId])
-}
-
-model BusinessLocation {
-  id               String       @id @default(cuid())
-  organizationId   String
-  googleAccountId  String
-  googleLocationId String       // Google側のLocation ID
-  name             String
-  address          String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  googleAccount    GoogleAccount @relation(fields: [googleAccountId], references: [id], onDelete: Cascade)
-  reviews          Review[]
-
-  @@unique([organizationId, googleLocationId])
-  @@index([organizationId])
-  @@index([googleAccountId])
-}
-
-model Review {
-  id               String       @id @default(cuid())
-  locationId       String
-  googleReviewId   String       @unique // Google側のReview ID
-  starRating       Int          // 1-5
-  comment          String?      @db.Text
-  reviewerName     String
-  createTime       DateTime
-  updateTime       DateTime?
-  replyStatus      ReplyStatus  @default(UNANSWERED)
-  
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  location         BusinessLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  reply            ReviewReply?
-  aiDrafts         AIReplyDraft[]
-
-  @@index([locationId])
-  @@index([replyStatus])
-}
-
-model ReviewReply {
-  id               String       @id @default(cuid())
-  reviewId         String       @unique
-  comment          String       @db.Text
-  updateTime       DateTime
-  
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  review           Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-}
-
-model AIReplyDraft {
-  id               String       @id @default(cuid())
-  reviewId         String
-  draftContent     String       @db.Text
-  status           DraftStatus  @default(PENDING) // PENDING, APPROVED, REJECTED
-  
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  review           Review       @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-
-  @@index([reviewId])
-}
-
-model ReplyTemplate {
-  id               String       @id @default(cuid())
-  organizationId   String
-  name             String
-  content          String       @db.Text
-  targetStarRating Int?         // 紐付ける星の数（nullなら汎用など）
-  isActive         Boolean      @default(true)
-  
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-}
-
-enum UserRole {
-  ADMIN
-  USER
-}
-
 enum MemberRole {
   ADMIN
   MEMBER
   READONLY
 }
 
-enum ReplyStatus {
-  UNANSWERED
-  ANSWERED
-  PENDING_APPROVAL
+enum ReviewReplyStatus {
+  UNHANDLED
+  DRAFT
+  REPLIED
 }
 
-enum DraftStatus {
+enum AIApprovalStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum NotificationType {
+  NEW_REVIEW
+  UNREPLIED_ALERT
+}
+
+model Organization {
+  id                String            @id @default(cuid())
+  clerkOrgId        String            @unique
+  name              String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  members           Member[]
+  locations         BusinessLocation[]
+  replyTemplates    ReplyTemplate[]
+  notifications     Notification[]
+}
+
+model Member {
+  id                String        @id @default(cuid())
+  organizationId    String
+  clerkUserId       String
+  role              MemberRole
+  displayName       String?
+  email             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, clerkUserId])
+  @@index([organizationId])
+}
+
+model BusinessLocation {
+  id                String        @id @default(cuid())
+  organizationId    String
+  name              String
+  address           String?
+  googleLocationId  String        @unique
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviews           Review[]
+
+  @@index([organizationId])
+}
+
+model Review {
+  id                String             @id @default(cuid())
+  organizationId    String
+  businessLocationId String
+  googleReviewId    String             @unique
+  reviewerName      String?
+  rating            Int
+  comment           String?
+  reviewedAt        DateTime
+  replyStatus       ReviewReplyStatus  @default(UNHANDLED)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  businessLocation  BusinessLocation   @relation(fields: [businessLocationId], references: [id], onDelete: Cascade)
+  reply             ReviewReply?
+  drafts            AIReplyDraft[]
+
+  @@index([organizationId])
+  @@index([businessLocationId])
+  @@index([replyStatus])
+}
+
+model ReviewReply {
+  id                String        @id @default(cuid())
+  reviewId          String        @unique
+  organizationId    String
+  body              String
+  postedAt          DateTime?
+  createdByClerkUserId String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  review            Review        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model AIReplyDraft {
+  id                String            @id @default(cuid())
+  reviewId          String
+  organizationId    String
+  body              String
+  approvalStatus    AIApprovalStatus  @default(PENDING)
+  generatedBy       String?
+  approvedBy        String?
+  rejectedReason    String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  review            Review            @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([reviewId])
+  @@index([approvalStatus])
+}
+
+model ReplyTemplate {
+  id                String        @id @default(cuid())
+  organizationId    String
+  name              String
+  starRating        Int?
+  body              String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Notification {
+  id                String            @id @default(cuid())
+  organizationId    String
+  type              NotificationType
+  title             String
+  body              String?
+  readAt            DateTime?
+  createdAt         DateTime          @default(now())
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([type])
 }
