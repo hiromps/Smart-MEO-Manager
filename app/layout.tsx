@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ClerkProvider } from '@clerk/nextjs'
 import { jaJP } from '@clerk/localizations'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -53,6 +54,7 @@ export default function RootLayout({
       <html lang="ja">
         <body className="font-sans antialiased">
           {children}
+          <Toaster />
           <Analytics />
         </body>
       </html>

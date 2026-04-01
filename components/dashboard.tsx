@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { useUser, useClerk, UserButton, OrganizationSwitcher } from "@clerk/nextjs"
+import { useMemo, useState, useTransition } from "react"
+import { UserButton, OrganizationSwitcher } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
 import {
   Star,
   MessageSquare,
@@ -36,6 +37,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -50,6 +52,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts"
+import type { DashboardData } from "@/lib/dashboard-data"
 
 interface DashboardProps {
   serverOrg: {
@@ -66,83 +69,16 @@ interface DashboardProps {
     name: string | null;
     imageUrl: string | null;
   } | null;
+  dashboardData: DashboardData;
 }
 
-export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
-  const { user } = useUser()
-  const { signOut } = useClerk()
+export default function Dashboard({ serverOrg, serverUser, dashboardData }: DashboardProps) {
+  const router = useRouter()
+  const { toast } = useToast()
   const [activeSection, setActiveSection] = useState("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [selectedLocation, setSelectedLocation] = useState("all")
-
-
-  // Sample data for review trends
-  const reviewTrendsData = [
-    { date: "1月", reviews: 24, rating: 4.2 },
-    { date: "2月", reviews: 31, rating: 4.3 },
-    { date: "3月", reviews: 28, rating: 4.1 },
-    { date: "4月", reviews: 35, rating: 4.4 },
-    { date: "5月", reviews: 42, rating: 4.5 },
-    { date: "6月", reviews: 38, rating: 4.3 },
-  ]
-
-  // Sample data for insights
-  const insightsData = [
-    { date: "月", searches: 1200, views: 850 },
-    { date: "火", searches: 1400, views: 920 },
-    { date: "水", searches: 1100, views: 780 },
-    { date: "木", searches: 1600, views: 1100 },
-    { date: "金", searches: 1800, views: 1250 },
-    { date: "土", searches: 2200, views: 1600 },
-    { date: "日", searches: 2000, views: 1400 },
-  ]
-
-  // Sample recent reviews
-  const recentReviews = [
-    {
-      id: 1,
-      author: "田中 太郎",
-      rating: 5,
-      comment: "素晴らしいサービスでした。スタッフの対応も丁寧で、また利用したいです。",
-      date: "2時間前",
-      status: "pending",
-      location: "新宿店",
-    },
-    {
-      id: 2,
-      author: "佐藤 花子",
-      rating: 4,
-      comment: "料理は美味しかったですが、少し待ち時間が長かったです。",
-      date: "5時間前",
-      status: "draft",
-      location: "渋谷店",
-    },
-    {
-      id: 3,
-      author: "鈴木 一郎",
-      rating: 3,
-      comment: "普通でした。特に良くも悪くもない印象です。",
-      date: "1日前",
-      status: "posted",
-      location: "池袋店",
-    },
-    {
-      id: 4,
-      author: "高橋 美咲",
-      rating: 5,
-      comment: "最高の体験でした！友人にもおすすめしたいと思います。",
-      date: "2日前",
-      status: "posted",
-      location: "新宿店",
-    },
-  ]
-
-  const locations = [
-    { id: "all", name: "全店舗" },
-    { id: "shinjuku", name: "新宿店" },
-    { id: "shibuya", name: "渋谷店" },
-    { id: "ikebukuro", name: "池袋店" },
-  ]
+  const [selectedLocation, setSelectedLocation] = useState(dashboardData.locationOptions[0]?.id ?? "all")
+  const [isImportingDemo, startImportTransition] = useTransition()
 
   const navItems = [
     { id: "dashboard", icon: LayoutDashboard, label: "ダッシュボード" },
@@ -153,6 +89,55 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
     { id: "locations", icon: Store, label: "店舗管理" },
     { id: "settings", icon: Settings, label: "設定" },
   ]
+
+  const filteredRecentReviews = useMemo(() => {
+    if (selectedLocation === "all") {
+      return dashboardData.recentReviews
+    }
+
+    const locationName = dashboardData.locationOptions.find((location) => location.id === selectedLocation)?.name
+    return dashboardData.recentReviews.filter((review) => review.location === locationName)
+  }, [dashboardData.locationOptions, dashboardData.recentReviews, selectedLocation])
+
+  const filteredLocationStats = useMemo(() => {
+    if (selectedLocation === "all") {
+      return dashboardData.locationStats
+    }
+
+    return dashboardData.locationStats.filter((location) => location.id === selectedLocation)
+  }, [dashboardData.locationStats, selectedLocation])
+
+  const handleImportDemoData = () => {
+    startImportTransition(async () => {
+      try {
+        const response = await fetch("/api/demo/import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ source: "demo" }),
+        })
+
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Failed to import demo data")
+        }
+
+        toast({
+          title: "デモデータを取り込みました",
+          description: `${payload.imported.reviewCount}件の口コミを現在の組織に投入しました。`,
+        })
+        router.refresh()
+      } catch (error) {
+        toast({
+          title: "取り込みに失敗しました",
+          description: error instanceof Error ? error.message : "デモデータの取り込みに失敗しました。",
+          variant: "destructive",
+        })
+      }
+    })
+  }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -192,9 +177,8 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-card border-r border-border transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-card border-r border-border transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
@@ -224,11 +208,10 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                   setActiveSection(item.id)
                   setSidebarOpen(false)
                 }}
-                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  activeSection === item.id
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-                }`}
+                className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${activeSection === item.id
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  }`}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
@@ -256,10 +239,10 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
               )}
             </div>
             <div className="px-3 pt-2">
-               <UserButton 
-                 afterSignOutUrl="/sign-in"
-                 showName={true}
-               />
+              <UserButton
+                afterSignOutUrl="/sign-in"
+                showName={true}
+              />
             </div>
           </div>
         </div>
@@ -292,7 +275,7 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {locations.map((location) => (
+                {dashboardData.locationOptions.map((location) => (
                   <SelectItem key={location.id} value={location.id}>
                     {location.name}
                   </SelectItem>
@@ -319,6 +302,23 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {dashboardData.isDemo && (
+            <div className="mb-6 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">デモデータを表示中です</p>
+                  <p className="text-sm text-muted-foreground">
+                    Google Business Profile 未連携でも UI と業務フローを開発できるよう、モックデータを表示しています。
+                  </p>
+                </div>
+                <Button onClick={handleImportDemoData} disabled={!serverOrg || isImportingDemo}>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {isImportingDemo ? "取り込み中..." : serverOrg ? "現在の組織へデモデータ投入" : "組織選択後に投入可能"}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Period Selector */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -336,16 +336,16 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
 
           {/* KPI Cards */}
           <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="bg-card border-border">
+            <Card className="min-w-0 bg-card border-border">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">総口コミ数</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">1,284</p>
+                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.totalReviews.toLocaleString()}</p>
                     <div className="mt-1 flex items-center gap-1">
                       <TrendingUp className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs text-emerald-600">+12%</span>
-                      <span className="text-xs text-muted-foreground">先月比</span>
+                      <span className="text-xs text-emerald-600">{dashboardData.isDemo ? "デモ" : "実データ"}</span>
+                      <span className="text-xs text-muted-foreground">表示モード</span>
                     </div>
                   </div>
                   <div className="rounded-lg bg-primary/10 p-2.5">
@@ -360,9 +360,9 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">平均評価</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">4.3</p>
+                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.averageRating.toFixed(1)}</p>
                     <div className="mt-1 flex items-center gap-1">
-                      {renderStars(4)}
+                      {renderStars(Math.round(dashboardData.summary.averageRating))}
                     </div>
                   </div>
                   <div className="rounded-lg bg-amber-100 p-2.5">
@@ -377,11 +377,11 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">返信率</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">94%</p>
+                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.responseRate}%</p>
                     <div className="mt-1 flex items-center gap-1">
                       <TrendingUp className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs text-emerald-600">+5%</span>
-                      <span className="text-xs text-muted-foreground">先月比</span>
+                      <span className="text-xs text-emerald-600">下書き含む</span>
+                      <span className="text-xs text-muted-foreground">対応率</span>
                     </div>
                   </div>
                   <div className="rounded-lg bg-emerald-100 p-2.5">
@@ -396,7 +396,7 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">未対応口コミ</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">8</p>
+                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.pendingReviews}</p>
                     <div className="mt-1 flex items-center gap-1">
                       <Clock className="h-3 w-3 text-amber-500" />
                       <span className="text-xs text-amber-600">要対応</span>
@@ -433,9 +433,9 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 </DropdownMenu>
               </CardHeader>
               <CardContent>
-                <div className="h-[240px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsBarChart data={reviewTrendsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <div className="h-[240px] min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                    <RechartsBarChart data={dashboardData.reviewTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                       <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
                       <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
@@ -456,7 +456,7 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
             </Card>
 
             {/* Insights Chart */}
-            <Card className="bg-card border-border">
+            <Card className="min-w-0 bg-card border-border">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <div>
                   <CardTitle className="text-base font-medium">検索・閲覧データ</CardTitle>
@@ -474,9 +474,9 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="h-[240px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={insightsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <div className="h-[240px] min-w-0">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                    <AreaChart data={dashboardData.insights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                       <defs>
                         <linearGradient id="searchGradient" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
@@ -535,7 +535,7 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {recentReviews.map((review) => (
+                  {filteredRecentReviews.map((review) => (
                     <div
                       key={review.id}
                       className="flex items-start gap-4 rounded-lg border border-border bg-secondary/30 p-4 transition-colors hover:bg-secondary/50"
@@ -579,9 +579,9 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                     <Sparkles className="mr-2 h-4 w-4" />
                     一括AI返信生成
                   </Button>
-                  <Button className="w-full justify-start" variant="ghost">
+                  <Button className="w-full justify-start" variant="ghost" onClick={handleImportDemoData} disabled={!serverOrg || isImportingDemo}>
                     <MessageSquare className="mr-2 h-4 w-4" />
-                    口コミを同期
+                    {serverOrg ? (isImportingDemo ? "取込中..." : "デモ口コミを投入") : "組織選択が必要"}
                   </Button>
                   <Button className="w-full justify-start" variant="ghost">
                     <BarChart3 className="mr-2 h-4 w-4" />
@@ -600,11 +600,7 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                   <CardTitle className="text-base font-medium">店舗別パフォーマンス</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {[
-                    { name: "新宿店", rating: 4.5, reviews: 523, change: "+8%" },
-                    { name: "渋谷店", rating: 4.2, reviews: 412, change: "+12%" },
-                    { name: "池袋店", rating: 4.4, reviews: 349, change: "+5%" },
-                  ].map((location) => (
+                  {filteredLocationStats.map((location) => (
                     <div key={location.name} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary">
@@ -635,15 +631,19 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
                 <CardContent>
                   <div className="flex items-center justify-between">
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">156</p>
+                      <p className="text-2xl font-bold text-foreground">{dashboardData.summary.generatedThisMonth}</p>
                       <p className="text-xs text-muted-foreground">今月生成</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">2.3秒</p>
+                      <p className="text-2xl font-bold text-foreground">
+                        {dashboardData.summary.averageGenerationTimeSeconds ? `${dashboardData.summary.averageGenerationTimeSeconds.toFixed(1)}秒` : "-"}
+                      </p>
                       <p className="text-xs text-muted-foreground">平均生成時間</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">92%</p>
+                      <p className="text-2xl font-bold text-foreground">
+                        {dashboardData.summary.approvalRate !== null ? `${dashboardData.summary.approvalRate}%` : "-"}
+                      </p>
                       <p className="text-xs text-muted-foreground">承認率</p>
                     </div>
                   </div>
