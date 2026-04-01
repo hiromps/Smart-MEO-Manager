@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react"
 import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   Star,
   MessageSquare,
@@ -38,6 +38,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -76,8 +77,8 @@ interface DashboardProps {
 export default function Dashboard({ serverOrg, serverUser, dashboardData }: DashboardProps) {
   const { orgId } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { toast } = useToast()
-  const [activeSection, setActiveSection] = useState("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(dashboardData.locationOptions[0]?.id ?? "all")
   const [isImportingDemo, startImportTransition] = useTransition()
@@ -92,6 +93,20 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
     { id: "locations", icon: Store, label: "店舗管理" },
     { id: "settings", icon: Settings, label: "設定" },
   ]
+
+  const mobileNavItems = [
+    navItems[0],
+    navItems[1],
+    navItems[2],
+    navItems[5],
+  ]
+
+  const activeSection = useMemo(() => {
+    const section = searchParams.get("section")
+    return navItems.some((item) => item.id === section) ? section! : "dashboard"
+  }, [searchParams])
+
+  const activeNavItem = navItems.find((item) => item.id === activeSection) ?? navItems[0]
 
   const filteredRecentReviews = useMemo(() => {
     if (selectedLocation === "all") {
@@ -142,6 +157,12 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
     })
   }
 
+  const handleSectionChange = (sectionId: string) => {
+    const href = sectionId === "dashboard" ? "/" : `/?section=${sectionId}`
+    router.push(href, { scroll: false })
+    setSidebarOpen(false)
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending":
@@ -166,6 +187,484 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
         ))}
       </div>
     )
+  }
+
+  const renderDashboardOverview = () => (
+    <>
+      <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="min-w-0 bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">総口コミ数</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.totalReviews.toLocaleString()}</p>
+                <div className="mt-1 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
+                  <span className="text-xs text-emerald-600">{dashboardData.isDemo ? "デモ" : "実データ"}</span>
+                  <span className="text-xs text-muted-foreground">表示モード</span>
+                </div>
+              </div>
+              <div className="rounded-lg bg-primary/10 p-2.5">
+                <MessageSquare className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">平均評価</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.averageRating.toFixed(1)}</p>
+                <div className="mt-1 flex items-center gap-1">
+                  {renderStars(Math.round(dashboardData.summary.averageRating))}
+                </div>
+              </div>
+              <div className="rounded-lg bg-amber-100 p-2.5">
+                <Star className="h-5 w-5 text-amber-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">返信率</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.responseRate}%</p>
+                <div className="mt-1 flex items-center gap-1">
+                  <TrendingUp className="h-3 w-3 text-emerald-500" />
+                  <span className="text-xs text-emerald-600">下書き含む</span>
+                  <span className="text-xs text-muted-foreground">対応率</span>
+                </div>
+              </div>
+              <div className="rounded-lg bg-emerald-100 p-2.5">
+                <Check className="h-5 w-5 text-emerald-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">未対応口コミ</p>
+                <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.pendingReviews}</p>
+                <div className="mt-1 flex items-center gap-1">
+                  <Clock className="h-3 w-3 text-amber-500" />
+                  <span className="text-xs text-amber-600">要対応</span>
+                </div>
+              </div>
+              <div className="rounded-lg bg-amber-100 p-2.5">
+                <AlertCircle className="h-5 w-5 text-amber-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-medium">口コミ推移</CardTitle>
+              <CardDescription className="text-muted-foreground">月別の口コミ数と平均評価</CardDescription>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-muted-foreground">
+                  6ヶ月 <ChevronDown className="ml-1 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem>3ヶ月</DropdownMenuItem>
+                <DropdownMenuItem>6ヶ月</DropdownMenuItem>
+                <DropdownMenuItem>1年</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[240px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                <RechartsBarChart data={dashboardData.reviewTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      color: "hsl(var(--foreground))",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                  />
+                  <Bar dataKey="reviews" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="min-w-0 bg-card border-border">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <div>
+              <CardTitle className="text-base font-medium">検索・閲覧データ</CardTitle>
+              <CardDescription className="text-muted-foreground">Google検索での表示回数と閲覧数</CardDescription>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-primary" />
+                <span className="text-muted-foreground">検索表示</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-accent" />
+                <span className="text-muted-foreground">閲覧</span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[240px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
+                <AreaChart data={dashboardData.insights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="searchGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="viewGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "hsl(var(--card))",
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: "8px",
+                      color: "hsl(var(--foreground))",
+                    }}
+                    labelStyle={{ color: "hsl(var(--foreground))" }}
+                  />
+                  <Area type="monotone" dataKey="searches" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#searchGradient)" />
+                  <Area type="monotone" dataKey="views" stroke="hsl(var(--accent))" strokeWidth={2} fill="url(#viewGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <Card className="bg-card border-border lg:col-span-2">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-medium">最新口コミ</CardTitle>
+              <CardDescription className="text-muted-foreground">直近 {filteredRecentReviews.length} 件の口コミと返信ステータス</CardDescription>
+            </div>
+            <Button variant="ghost" size="sm" className="text-primary">
+              {dashboardData.summary.totalReviews} 件表示中 <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {filteredRecentReviews.map((review) => (
+                <div key={review.id} className="flex items-start gap-4 rounded-lg border border-border bg-secondary/30 p-4 transition-colors hover:bg-secondary/50">
+                  <Avatar className="h-10 w-10">
+                    <AvatarFallback className="bg-primary/20 text-primary text-sm">{review.author.slice(0, 2)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{review.author}</span>
+                      {renderStars(review.rating)}
+                      {getStatusBadge(review.status)}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{review.comment}</p>
+                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{review.location}</span>
+                      <span>{review.date}</span>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="sm" className="shrink-0">
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                    AI返信
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base font-medium">クイックアクション</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <Button className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20" variant="ghost">
+                <Sparkles className="mr-2 h-4 w-4" />
+                一括AI返信生成
+              </Button>
+              <Button className="w-full justify-start" variant="ghost" onClick={handleImportDemoData} disabled={!hasSelectedOrganization || isImportingDemo}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {hasSelectedOrganization ? (isImportingDemo ? "取込中..." : "デモ口コミを投入") : "組織選択が必要"}
+              </Button>
+              <Button className="w-full justify-start" variant="ghost">
+                <BarChart3 className="mr-2 h-4 w-4" />
+                レポートを出力
+              </Button>
+              <Button className="w-full justify-start" variant="ghost">
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Googleビジネスを開く
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base font-medium">店舗別パフォーマンス</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {filteredLocationStats.map((location) => (
+                <div key={location.name} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary">
+                      <Store className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{location.name}</p>
+                      <div className="flex items-center gap-1">
+                        <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                        <span className="text-xs text-muted-foreground">{location.rating}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-foreground">{location.reviews}</p>
+                    <p className="text-xs text-emerald-600">{location.change}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-base font-medium">AI返信統計</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-foreground">{dashboardData.summary.generatedThisMonth}</p>
+                  <p className="text-xs text-muted-foreground">今月生成</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-foreground">{dashboardData.summary.averageGenerationTimeSeconds ? `${dashboardData.summary.averageGenerationTimeSeconds.toFixed(1)}秒` : "-"}</p>
+                  <p className="text-xs text-muted-foreground">平均生成時間</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-foreground">{dashboardData.summary.approvalRate !== null ? `${dashboardData.summary.approvalRate}%` : "-"}</p>
+                  <p className="text-xs text-muted-foreground">承認率</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </>
+  )
+
+  const renderReviewsSection = () => (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-base font-medium">口コミ一覧</CardTitle>
+        <CardDescription className="text-muted-foreground">選択店舗の口コミを確認し、返信ステータスごとに追えます。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {filteredRecentReviews.map((review) => (
+          <div key={review.id} className="rounded-lg border border-border p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-foreground">{review.author}</span>
+                {renderStars(review.rating)}
+                {getStatusBadge(review.status)}
+              </div>
+              <span className="text-xs text-muted-foreground">{review.date}</span>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">{review.comment}</p>
+            <p className="mt-2 text-xs text-muted-foreground">店舗: {review.location}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+
+  const renderAnalyticsSection = () => (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-base font-medium">口コミ推移</CardTitle>
+            <CardDescription className="text-muted-foreground">月別の口コミ件数を確認できます。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
+                <RechartsBarChart data={dashboardData.reviewTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <Tooltip />
+                  <Bar dataKey="reviews" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </RechartsBarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-base font-medium">検索・閲覧データ</CardTitle>
+            <CardDescription className="text-muted-foreground">検索表示と閲覧数の推移です。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[280px] min-w-0">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
+                <AreaChart data={dashboardData.insights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <Tooltip />
+                  <Area type="monotone" dataKey="searches" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={0.2} fill="hsl(var(--primary))" />
+                  <Area type="monotone" dataKey="views" stroke="hsl(var(--accent))" strokeWidth={2} fillOpacity={0.18} fill="hsl(var(--accent))" />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">主要指標</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div>
+            <p className="text-xs text-muted-foreground">平均評価</p>
+            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.averageRating.toFixed(1)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">返信率</p>
+            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.responseRate}%</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">承認待ち</p>
+            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.pendingApprovalReviews}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">店舗数</p>
+            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.locationCount}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+
+  const renderLocationsSection = () => (
+    <Card className="bg-card border-border">
+      <CardHeader>
+        <CardTitle className="text-base font-medium">店舗管理</CardTitle>
+        <CardDescription className="text-muted-foreground">取り込み済み店舗ごとの件数と評価を確認できます。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {dashboardData.locationStats.map((location) => (
+          <div key={location.id} className="flex items-center justify-between rounded-lg border border-border p-4">
+            <div>
+              <p className="font-medium text-foreground">{location.name}</p>
+              <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                <span>口コミ {location.reviews}件</span>
+                <span>評価 {location.rating}</span>
+              </div>
+            </div>
+            <Badge variant="outline" className="text-primary">{location.change}</Badge>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  )
+
+  const renderAiSettingsSection = () => (
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <Card className="bg-card border-border lg:col-span-2">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">AI返信設定</CardTitle>
+          <CardDescription className="text-muted-foreground">デモ環境では生成統計と運用イメージを確認できます。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="rounded-lg bg-secondary/50 p-4">
+            <p className="text-xs text-muted-foreground">今月生成</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{dashboardData.summary.generatedThisMonth}</p>
+          </div>
+          <div className="rounded-lg bg-secondary/50 p-4">
+            <p className="text-xs text-muted-foreground">平均生成時間</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{dashboardData.summary.averageGenerationTimeSeconds ? `${dashboardData.summary.averageGenerationTimeSeconds.toFixed(1)}秒` : "-"}</p>
+          </div>
+          <div className="rounded-lg bg-secondary/50 p-4">
+            <p className="text-xs text-muted-foreground">承認率</p>
+            <p className="mt-2 text-2xl font-semibold text-foreground">{dashboardData.summary.approvalRate !== null ? `${dashboardData.summary.approvalRate}%` : "-"}</p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="text-base font-medium">次の実装</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
+          <p>返信トーン設定</p>
+          <p>禁止ワード設定</p>
+          <p>星評価ごとのテンプレート適用</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+
+  const renderPlaceholderSection = (title: string, description: string, icon: React.ReactNode) => (
+    <Empty className="border border-dashed border-border bg-card">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">{icon}</EmptyMedia>
+        <EmptyTitle>{title}</EmptyTitle>
+        <EmptyDescription>{description}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent>
+        <Button onClick={() => handleSectionChange("dashboard")}>ダッシュボードへ戻る</Button>
+      </EmptyContent>
+    </Empty>
+  )
+
+  const renderSectionContent = () => {
+    switch (activeSection) {
+      case "dashboard":
+        return renderDashboardOverview()
+      case "reviews":
+        return renderReviewsSection()
+      case "analytics":
+        return renderAnalyticsSection()
+      case "locations":
+        return renderLocationsSection()
+      case "ai-settings":
+        return renderAiSettingsSection()
+      case "templates":
+        return renderPlaceholderSection("テンプレート", "テンプレート管理ページは次に実装します。ここから専用ページへ切り替わります。", <FileText />)
+      case "settings":
+        return renderPlaceholderSection("設定", "アカウント設定と通知設定のページです。ここから機能を追加していけます。", <Settings />)
+      default:
+        return renderDashboardOverview()
+    }
   }
 
   return (
@@ -208,8 +707,7 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
               <button
                 key={item.id}
                 onClick={() => {
-                  setActiveSection(item.id)
-                  setSidebarOpen(false)
+                  handleSectionChange(item.id)
                 }}
                 className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${activeSection === item.id
                   ? "bg-primary/10 text-primary"
@@ -251,10 +749,10 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
       </aside>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-16 items-center justify-between border-b border-border bg-card px-4 md:px-6">
-          <div className="flex items-center gap-4">
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-border bg-card px-4 py-3 md:px-6">
+          <div className="flex min-w-0 items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
@@ -264,15 +762,16 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
               <Menu className="h-5 w-5" />
             </Button>
 
-            <div className="hidden md:block">
-              <h1 className="text-xl font-semibold text-foreground">ダッシュボード</h1>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-semibold text-foreground md:text-xl">{activeNavItem.label}</h1>
+              <p className="truncate text-xs text-muted-foreground md:hidden">{dashboardData.sourceLabel}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 md:gap-3">
             {/* Location Selector */}
             <Select value={selectedLocation} onValueChange={setSelectedLocation}>
-              <SelectTrigger className="w-[140px] bg-secondary border-border">
+              <SelectTrigger className="hidden w-[140px] bg-secondary border-border sm:flex">
                 <Store className="mr-2 h-4 w-4 text-muted-foreground" />
                 <SelectValue />
               </SelectTrigger>
@@ -303,7 +802,23 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
         </header>
 
         {/* Dashboard Content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6">
+          <div className="mb-4 sm:hidden">
+            <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+              <SelectTrigger className="w-full bg-secondary border-border">
+                <Store className="mr-2 h-4 w-4 text-muted-foreground" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {dashboardData.locationOptions.map((location) => (
+                  <SelectItem key={location.id} value={location.id}>
+                    {location.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <Alert className={`mb-6 border ${dashboardData.isDemo ? "border-primary/40 bg-primary/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
             {dashboardData.isDemo ? <Sparkles className="h-4 w-4" /> : <Check className="h-4 w-4 text-emerald-600" />}
             <AlertTitle>{dashboardData.isDemo ? "デモデータを表示中です" : "取り込み済みデータを表示中です"}</AlertTitle>
@@ -385,324 +900,33 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
             </Tabs>
           </div>
 
-          {/* KPI Cards */}
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card className="min-w-0 bg-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">総口コミ数</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.totalReviews.toLocaleString()}</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs text-emerald-600">{dashboardData.isDemo ? "デモ" : "実データ"}</span>
-                      <span className="text-xs text-muted-foreground">表示モード</span>
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-primary/10 p-2.5">
-                    <MessageSquare className="h-5 w-5 text-primary" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">平均評価</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.averageRating.toFixed(1)}</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      {renderStars(Math.round(dashboardData.summary.averageRating))}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-amber-100 p-2.5">
-                    <Star className="h-5 w-5 text-amber-500" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">返信率</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.responseRate}%</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <TrendingUp className="h-3 w-3 text-emerald-500" />
-                      <span className="text-xs text-emerald-600">下書き含む</span>
-                      <span className="text-xs text-muted-foreground">対応率</span>
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-emerald-100 p-2.5">
-                    <Check className="h-5 w-5 text-emerald-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">未対応口コミ</p>
-                    <p className="mt-2 text-3xl font-bold text-foreground">{dashboardData.summary.pendingReviews}</p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-amber-500" />
-                      <span className="text-xs text-amber-600">要対応</span>
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-amber-100 p-2.5">
-                    <AlertCircle className="h-5 w-5 text-amber-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Charts Row */}
-          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            {/* Review Trends Chart */}
-            <Card className="bg-card border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-base font-medium">口コミ推移</CardTitle>
-                  <CardDescription className="text-muted-foreground">月別の口コミ数と平均評価</CardDescription>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground">
-                      6ヶ月 <ChevronDown className="ml-1 h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem>3ヶ月</DropdownMenuItem>
-                    <DropdownMenuItem>6ヶ月</DropdownMenuItem>
-                    <DropdownMenuItem>1年</DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[240px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <RechartsBarChart data={dashboardData.reviewTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          color: "hsl(var(--foreground))",
-                        }}
-                        labelStyle={{ color: "hsl(var(--foreground))" }}
-                      />
-                      <Bar dataKey="reviews" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    </RechartsBarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Insights Chart */}
-            <Card className="min-w-0 bg-card border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-base font-medium">検索・閲覧データ</CardTitle>
-                  <CardDescription className="text-muted-foreground">Google検索での表示回数と閲覧数</CardDescription>
-                </div>
-                <div className="flex items-center gap-4 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-primary" />
-                    <span className="text-muted-foreground">検索表示</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="h-2 w-2 rounded-full bg-accent" />
-                    <span className="text-muted-foreground">閲覧</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[240px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
-                    <AreaChart data={dashboardData.insights} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="searchGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="viewGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--accent))" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="hsl(var(--accent))" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          color: "hsl(var(--foreground))",
-                        }}
-                        labelStyle={{ color: "hsl(var(--foreground))" }}
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="searches"
-                        stroke="hsl(var(--primary))"
-                        strokeWidth={2}
-                        fill="url(#searchGradient)"
-                      />
-                      <Area
-                        type="monotone"
-                        dataKey="views"
-                        stroke="hsl(var(--accent))"
-                        strokeWidth={2}
-                        fill="url(#viewGradient)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Reviews and Quick Actions */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {/* Recent Reviews */}
-            <Card className="bg-card border-border lg:col-span-2">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle className="text-base font-medium">最新口コミ</CardTitle>
-                  <CardDescription className="text-muted-foreground">直近 {filteredRecentReviews.length} 件の口コミと返信ステータス</CardDescription>
-                </div>
-                <Button variant="ghost" size="sm" className="text-primary">
-                  {dashboardData.summary.totalReviews} 件表示中 <ChevronRight className="ml-1 h-4 w-4" />
-                </Button>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {filteredRecentReviews.map((review) => (
-                    <div
-                      key={review.id}
-                      className="flex items-start gap-4 rounded-lg border border-border bg-secondary/30 p-4 transition-colors hover:bg-secondary/50"
-                    >
-                      <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-primary/20 text-primary text-sm">
-                          {review.author.slice(0, 2)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium text-foreground">{review.author}</span>
-                          {renderStars(review.rating)}
-                          {getStatusBadge(review.status)}
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{review.comment}</p>
-                        <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>{review.location}</span>
-                          <span>{review.date}</span>
-                        </div>
-                      </div>
-                      <Button variant="ghost" size="sm" className="shrink-0">
-                        <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
-                        AI返信
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Quick Actions & Stats */}
-            <div className="space-y-4">
-              {/* Quick Actions */}
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-base font-medium">クイックアクション</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Button className="w-full justify-start bg-primary/10 text-primary hover:bg-primary/20" variant="ghost">
-                    <Sparkles className="mr-2 h-4 w-4" />
-                    一括AI返信生成
-                  </Button>
-                  <Button className="w-full justify-start" variant="ghost" onClick={handleImportDemoData} disabled={!hasSelectedOrganization || isImportingDemo}>
-                    <MessageSquare className="mr-2 h-4 w-4" />
-                    {hasSelectedOrganization ? (isImportingDemo ? "取込中..." : "デモ口コミを投入") : "組織選択が必要"}
-                  </Button>
-                  <Button className="w-full justify-start" variant="ghost">
-                    <BarChart3 className="mr-2 h-4 w-4" />
-                    レポートを出力
-                  </Button>
-                  <Button className="w-full justify-start" variant="ghost">
-                    <ExternalLink className="mr-2 h-4 w-4" />
-                    Googleビジネスを開く
-                  </Button>
-                </CardContent>
-              </Card>
-
-              {/* Location Stats */}
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-base font-medium">店舗別パフォーマンス</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {filteredLocationStats.map((location) => (
-                    <div key={location.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-secondary">
-                          <Store className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{location.name}</p>
-                          <div className="flex items-center gap-1">
-                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-                            <span className="text-xs text-muted-foreground">{location.rating}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-medium text-foreground">{location.reviews}</p>
-                        <p className="text-xs text-emerald-600">{location.change}</p>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* AI Reply Stats */}
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-base font-medium">AI返信統計</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">{dashboardData.summary.generatedThisMonth}</p>
-                      <p className="text-xs text-muted-foreground">今月生成</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">
-                        {dashboardData.summary.averageGenerationTimeSeconds ? `${dashboardData.summary.averageGenerationTimeSeconds.toFixed(1)}秒` : "-"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">平均生成時間</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-foreground">
-                        {dashboardData.summary.approvalRate !== null ? `${dashboardData.summary.approvalRate}%` : "-"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">承認率</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+          {renderSectionContent()}
         </main>
+
+        <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 backdrop-blur md:hidden">
+          <div className="grid grid-cols-5">
+            {mobileNavItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleSectionChange(item.id)}
+                className={`flex flex-col items-center justify-center gap-1 px-2 py-3 text-[11px] transition-colors ${activeSection === item.id
+                  ? "text-primary"
+                  : "text-muted-foreground"
+                  }`}
+              >
+                <item.icon className="h-4 w-4" />
+                <span className="truncate">{item.label}</span>
+              </button>
+            ))}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex flex-col items-center justify-center gap-1 px-2 py-3 text-[11px] text-muted-foreground transition-colors"
+            >
+              <Menu className="h-4 w-4" />
+              <span>メニュー</span>
+            </button>
+          </div>
+        </nav>
       </div>
     </div>
   )
