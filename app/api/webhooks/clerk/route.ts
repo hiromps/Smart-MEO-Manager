@@ -3,6 +3,10 @@ import { headers } from "next/headers";
 import { WebhookEvent } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
 
+function buildDisplayName(firstName: string | null, lastName: string | null) {
+  return `${firstName || ""} ${lastName || ""}`.trim() || null;
+}
+
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET;
 
@@ -51,30 +55,26 @@ export async function POST(req: Request) {
   const { id } = evt.data;
   const eventType = evt.type;
 
-  if (eventType === "user.created") {
+  if (eventType === "user.created" || eventType === "user.updated") {
     const { id, email_addresses, first_name, last_name, image_url } = evt.data;
+    const primaryEmail = email_addresses[0]?.email_address;
 
-    await db.user.create({
-      data: {
-        clerkId: id,
-        email: email_addresses[0].email_address,
-        name: `${first_name || ""} ${last_name || ""}`.trim(),
-        imageUrl: image_url,
-      },
-    });
-  }
-
-  if (eventType === "user.updated") {
-    const { id, email_addresses, first_name, last_name, image_url } = evt.data;
-
-    await db.user.update({
-      where: { clerkId: id },
-      data: {
-        email: email_addresses[0].email_address,
-        name: `${first_name || ""} ${last_name || ""}`.trim(),
-        imageUrl: image_url,
-      },
-    });
+    if (primaryEmail) {
+      await db.user.upsert({
+        where: { clerkId: id },
+        update: {
+          email: primaryEmail,
+          name: buildDisplayName(first_name, last_name),
+          imageUrl: image_url,
+        },
+        create: {
+          clerkId: id,
+          email: primaryEmail,
+          name: buildDisplayName(first_name, last_name),
+          imageUrl: image_url,
+        },
+      });
+    }
   }
 
   if (eventType === "user.deleted") {
@@ -86,38 +86,51 @@ export async function POST(req: Request) {
   }
 
   if (eventType === "organization.created") {
-     const { id, name, slug, image_url, created_by } = evt.data;
-     
-     // 1. Create the organization
-     const org = await db.organization.create({
-       data: {
-         clerkId: id,
-         name: name,
-         slug: slug || id,
-         imageUrl: image_url,
-       }
-     });
+    const { id, name, slug, image_url, created_by } = evt.data;
 
-     // 2. Link the creator as ADMIN if user exists
-     const user = await db.user.findUnique({
-       where: { clerkId: created_by }
-     });
+    const org = await db.organization.upsert({
+      where: { clerkId: id },
+      update: {
+        name: name,
+        slug: slug || id,
+        imageUrl: image_url,
+      },
+      create: {
+        clerkId: id,
+        name: name,
+        slug: slug || id,
+        imageUrl: image_url,
+      }
+    });
 
-     if (user) {
-        await db.member.create({
-          data: {
+    const user = await db.user.findUnique({
+      where: { clerkId: created_by }
+    });
+
+    if (user) {
+      await db.member.upsert({
+        where: {
+          userId_organizationId: {
             userId: user.id,
             organizationId: org.id,
-            role: "ADMIN"
-          }
-        });
-     }
+          },
+        },
+        update: {
+          role: "ADMIN",
+        },
+        create: {
+          userId: user.id,
+          organizationId: org.id,
+          role: "ADMIN"
+        }
+      });
+    }
   }
 
   // Handle other events like organization membership created
   if (eventType === "organizationMembership.created") {
     const { organization, public_user_data, role } = evt.data;
-    
+
     const user = await db.user.findUnique({
       where: { clerkId: public_user_data.user_id }
     });

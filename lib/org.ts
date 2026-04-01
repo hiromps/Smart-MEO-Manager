@@ -1,6 +1,48 @@
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "./db";
 import { redirect } from "next/navigation";
+
+function buildDisplayName(firstName: string | null, lastName: string | null) {
+  return `${firstName || ""} ${lastName || ""}`.trim() || null;
+}
+
+export async function syncCurrentUser() {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return null;
+  }
+
+  const clerkUser = await currentUser();
+
+  if (!clerkUser) {
+    return null;
+  }
+
+  const primaryEmail =
+    clerkUser.emailAddresses.find(
+      (email) => email.id === clerkUser.primaryEmailAddressId
+    )?.emailAddress || clerkUser.emailAddresses[0]?.emailAddress;
+
+  if (!primaryEmail) {
+    return null;
+  }
+
+  return await db.user.upsert({
+    where: { clerkId: userId },
+    update: {
+      email: primaryEmail,
+      name: buildDisplayName(clerkUser.firstName, clerkUser.lastName),
+      imageUrl: clerkUser.imageUrl,
+    },
+    create: {
+      clerkId: userId,
+      email: primaryEmail,
+      name: buildDisplayName(clerkUser.firstName, clerkUser.lastName),
+      imageUrl: clerkUser.imageUrl,
+    },
+  });
+}
 
 /**
  * Gets the current tenant (organization) from the Clerk session.
@@ -26,7 +68,7 @@ export async function getCurrentOrg() {
  */
 export async function requireOrg() {
   const org = await getCurrentOrg();
-  
+
   if (!org) {
     // This assumes we have an 'org-selection' page or dashboard handles it
     return null;
@@ -39,13 +81,5 @@ export async function requireOrg() {
  * Gets the current user from our database based on the Clerk session.
  */
 export async function getCurrentUser() {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return null;
-  }
-
-  return await db.user.findUnique({
-    where: { clerkId: userId },
-  });
+  return await syncCurrentUser();
 }
