@@ -239,15 +239,21 @@ export default function Dashboard({ serverOrg, serverUser }: DashboardProps) {
           {/* User section */}
           <div className="border-t border-border p-3 flex flex-col gap-2">
             <div className="px-3">
-               <OrganizationSwitcher 
-                 appearance={{
-                   elements: {
-                     rootBox: "w-full",
-                     organizationSwitcherTrigger: "w-full flex items-center justify-between p-2 rounded-md border",
-                   }
-                 }}
-                 hidePersonal={true}
-               />
+              {serverOrg ? (
+                <OrganizationSwitcher
+                  appearance={{
+                    elements: {
+                      rootBox: "w-full",
+                      organizationSwitcherTrigger: "w-full flex items-center justify-between p-2 rounded-md border",
+                    }
+                  }}
+                  hidePersonal={false}
+                />
+              ) : (
+                <div className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-muted-foreground">
+                  個人アカウント
+                </div>
+              )}
             </div>
             <div className="px-3 pt-2">
                <UserButton 
