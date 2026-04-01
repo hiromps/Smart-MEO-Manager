@@ -7,15 +7,20 @@ import { getGoogleBusinessProfileAdapter } from "./google-business-profile";
 
 export type DashboardData = {
     isDemo: boolean;
+    sourceLabel: string;
     locationOptions: Array<{ id: string; name: string }>;
     summary: {
+        locationCount: number;
         totalReviews: number;
         averageRating: number;
         responseRate: number;
         pendingReviews: number;
+        answeredReviews: number;
+        pendingApprovalReviews: number;
         generatedThisMonth: number;
         averageGenerationTimeSeconds: number | null;
         approvalRate: number | null;
+        latestReviewAtLabel: string | null;
     };
     reviewTrends: Array<{ date: string; reviews: number; rating: number }>;
     insights: Array<{ date: string; searches: number; views: number }>;
@@ -133,15 +138,23 @@ function buildSummary(reviews: ReviewForDashboard[], generatedThisMonth: number,
         : 0;
     const handledReviews = reviews.filter((review) => review.replyStatus !== ReplyStatus.UNANSWERED).length;
     const pendingReviews = reviews.filter((review) => review.replyStatus === ReplyStatus.UNANSWERED).length;
+    const pendingApprovalReviews = reviews.filter((review) => review.replyStatus === ReplyStatus.PENDING_APPROVAL).length;
+    const latestReview = reviews[0]?.createTime;
 
     return {
+        locationCount: new Set(reviews.map((review) => review.location.id)).size,
         totalReviews,
         averageRating,
         responseRate: totalReviews > 0 ? Math.round((handledReviews / totalReviews) * 100) : 0,
         pendingReviews,
+        answeredReviews: reviews.filter((review) => review.replyStatus === ReplyStatus.ANSWERED).length,
+        pendingApprovalReviews,
         generatedThisMonth,
         averageGenerationTimeSeconds: generatedThisMonth > 0 ? 2.3 : null,
         approvalRate: totalDrafts > 0 ? Math.round((approvedDrafts / totalDrafts) * 100) : null,
+        latestReviewAtLabel: latestReview
+            ? new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "short" }).format(latestReview)
+            : null,
     };
 }
 
@@ -161,6 +174,7 @@ function buildDashboardDataFromReviews(
 
     return {
         isDemo,
+        sourceLabel: isDemo ? "デモデータ" : "取り込み済みデータ",
         locationOptions,
         summary: buildSummary(reviews, generatedThisMonth, approvedDrafts, totalDrafts),
         reviewTrends: buildReviewTrends(reviews),

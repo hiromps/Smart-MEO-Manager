@@ -27,6 +27,7 @@ import {
   ChevronRight,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -303,27 +304,76 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
 
         {/* Dashboard Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
-          {dashboardData.isDemo && (
-            <div className="mb-6 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+          <Alert className={`mb-6 border ${dashboardData.isDemo ? "border-primary/40 bg-primary/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
+            {dashboardData.isDemo ? <Sparkles className="h-4 w-4" /> : <Check className="h-4 w-4 text-emerald-600" />}
+            <AlertTitle>{dashboardData.isDemo ? "デモデータを表示中です" : "取り込み済みデータを表示中です"}</AlertTitle>
+            <AlertDescription>
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <p className="text-sm font-medium text-foreground">デモデータを表示中です</p>
-                  <p className="text-sm text-muted-foreground">
-                    Google Business Profile 未連携でも UI と業務フローを開発できるよう、モックデータを表示しています。
-                  </p>
-                </div>
+                <p>
+                  {dashboardData.isDemo
+                    ? "Google Business Profile 未連携でも UI と業務フローを開発できるよう、モックデータを表示しています。"
+                    : "現在の組織に取り込まれた店舗・口コミデータを表示しています。ダッシュボードの数値と一覧は投入データに連動しています。"}
+                </p>
                 <Button onClick={handleImportDemoData} disabled={!hasSelectedOrganization || isImportingDemo}>
                   <Sparkles className="mr-2 h-4 w-4" />
                   {isImportingDemo ? "取り込み中..." : hasSelectedOrganization ? "現在の組織へデモデータ投入" : "組織選択後に投入可能"}
                 </Button>
               </div>
-            </div>
-          )}
+            </AlertDescription>
+          </Alert>
+
+          <div className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Card className="border-border bg-card/80">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="rounded-lg bg-primary/10 p-2.5">
+                  <Store className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">取り込み店舗数</p>
+                  <p className="text-xl font-semibold text-foreground">{dashboardData.summary.locationCount}店舗</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border bg-card/80">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="rounded-lg bg-emerald-500/10 p-2.5">
+                  <Check className="h-4 w-4 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">返信済み</p>
+                  <p className="text-xl font-semibold text-foreground">{dashboardData.summary.answeredReviews}件</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border bg-card/80">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="rounded-lg bg-amber-500/10 p-2.5">
+                  <Clock className="h-4 w-4 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">承認待ち</p>
+                  <p className="text-xl font-semibold text-foreground">{dashboardData.summary.pendingApprovalReviews}件</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="border-border bg-card/80">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className="rounded-lg bg-secondary p-2.5">
+                  <Bell className="h-4 w-4 text-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">最終更新</p>
+                  <p className="text-sm font-semibold text-foreground">{dashboardData.summary.latestReviewAtLabel ?? "未取得"}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Period Selector */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="text-sm text-muted-foreground">2024年3月25日</p>
+              <p className="text-sm text-muted-foreground">{dashboardData.sourceLabel}</p>
+              <p className="text-xs text-muted-foreground">{dashboardData.summary.latestReviewAtLabel ? `最新口コミ: ${dashboardData.summary.latestReviewAtLabel}` : "最新口コミはまだありません"}</p>
             </div>
             <Tabs defaultValue="week" className="w-auto">
               <TabsList className="bg-secondary">
@@ -528,10 +578,10 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-base font-medium">最新口コミ</CardTitle>
-                  <CardDescription className="text-muted-foreground">直近の口コミと返信ステータス</CardDescription>
+                  <CardDescription className="text-muted-foreground">直近 {filteredRecentReviews.length} 件の口コミと返信ステータス</CardDescription>
                 </div>
                 <Button variant="ghost" size="sm" className="text-primary">
-                  すべて表示 <ChevronRight className="ml-1 h-4 w-4" />
+                  {dashboardData.summary.totalReviews} 件表示中 <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
               </CardHeader>
               <CardContent>
