@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { db } from "./db";
 import { redirect } from "next/navigation";
+import { syncClerkUser } from "./clerk-user-sync";
 
 function buildDisplayName(firstName: string | null, lastName: string | null) {
   return `${firstName || ""} ${lastName || ""}`.trim() || null;
@@ -28,19 +29,11 @@ export async function syncCurrentUser() {
     return null;
   }
 
-  return await db.user.upsert({
-    where: { clerkId: userId },
-    update: {
-      email: primaryEmail,
-      name: buildDisplayName(clerkUser.firstName, clerkUser.lastName),
-      imageUrl: clerkUser.imageUrl,
-    },
-    create: {
-      clerkId: userId,
-      email: primaryEmail,
-      name: buildDisplayName(clerkUser.firstName, clerkUser.lastName),
-      imageUrl: clerkUser.imageUrl,
-    },
+  return await syncClerkUser({
+    clerkId: userId,
+    email: primaryEmail,
+    name: buildDisplayName(clerkUser.firstName, clerkUser.lastName),
+    imageUrl: clerkUser.imageUrl,
   });
 }
 

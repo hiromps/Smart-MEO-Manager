@@ -2,6 +2,7 @@ import { Webhook } from "svix";
 import { headers } from "next/headers";
 import { WebhookEvent } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { syncClerkUser } from "@/lib/clerk-user-sync";
 
 function buildDisplayName(firstName: string | null, lastName: string | null) {
   return `${firstName || ""} ${lastName || ""}`.trim() || null;
@@ -60,19 +61,11 @@ export async function POST(req: Request) {
     const primaryEmail = email_addresses[0]?.email_address;
 
     if (primaryEmail) {
-      await db.user.upsert({
-        where: { clerkId: id },
-        update: {
-          email: primaryEmail,
-          name: buildDisplayName(first_name, last_name),
-          imageUrl: image_url,
-        },
-        create: {
-          clerkId: id,
-          email: primaryEmail,
-          name: buildDisplayName(first_name, last_name),
-          imageUrl: image_url,
-        },
+      await syncClerkUser({
+        clerkId: id,
+        email: primaryEmail,
+        name: buildDisplayName(first_name, last_name),
+        imageUrl: image_url,
       });
     }
   }
