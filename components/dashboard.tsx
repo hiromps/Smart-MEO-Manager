@@ -117,7 +117,7 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ source: "demo" }),
+          body: JSON.stringify({ source: "demo", clerkOrgId: orgId }),
         })
 
         const payload = await response.json()
