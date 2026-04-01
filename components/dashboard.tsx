@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { UserButton, OrganizationSwitcher } from "@clerk/nextjs"
+import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs"
 import { useRouter } from "next/navigation"
 import {
   Star,
@@ -73,12 +73,14 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ serverOrg, serverUser, dashboardData }: DashboardProps) {
+  const { orgId } = useAuth()
   const router = useRouter()
   const { toast } = useToast()
   const [activeSection, setActiveSection] = useState("dashboard")
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(dashboardData.locationOptions[0]?.id ?? "all")
   const [isImportingDemo, startImportTransition] = useTransition()
+  const hasSelectedOrganization = Boolean(orgId)
 
   const navItems = [
     { id: "dashboard", icon: LayoutDashboard, label: "ダッシュボード" },
@@ -222,17 +224,16 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
           {/* User section */}
           <div className="border-t border-border p-3 flex flex-col gap-2">
             <div className="px-3">
-              {serverOrg ? (
-                <OrganizationSwitcher
-                  appearance={{
-                    elements: {
-                      rootBox: "w-full",
-                      organizationSwitcherTrigger: "w-full flex items-center justify-between p-2 rounded-md border",
-                    }
-                  }}
-                  hidePersonal={false}
-                />
-              ) : (
+              <OrganizationSwitcher
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    organizationSwitcherTrigger: "w-full flex items-center justify-between p-2 rounded-md border",
+                  }
+                }}
+                hidePersonal={false}
+              />
+              {!hasSelectedOrganization && (
                 <div className="rounded-md border border-border bg-secondary px-3 py-2 text-sm text-muted-foreground">
                   個人アカウント
                 </div>
@@ -311,9 +312,9 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
                     Google Business Profile 未連携でも UI と業務フローを開発できるよう、モックデータを表示しています。
                   </p>
                 </div>
-                <Button onClick={handleImportDemoData} disabled={!serverOrg || isImportingDemo}>
+                <Button onClick={handleImportDemoData} disabled={!hasSelectedOrganization || isImportingDemo}>
                   <Sparkles className="mr-2 h-4 w-4" />
-                  {isImportingDemo ? "取り込み中..." : serverOrg ? "現在の組織へデモデータ投入" : "組織選択後に投入可能"}
+                  {isImportingDemo ? "取り込み中..." : hasSelectedOrganization ? "現在の組織へデモデータ投入" : "組織選択後に投入可能"}
                 </Button>
               </div>
             </div>
@@ -579,9 +580,9 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
                     <Sparkles className="mr-2 h-4 w-4" />
                     一括AI返信生成
                   </Button>
-                  <Button className="w-full justify-start" variant="ghost" onClick={handleImportDemoData} disabled={!serverOrg || isImportingDemo}>
+                  <Button className="w-full justify-start" variant="ghost" onClick={handleImportDemoData} disabled={!hasSelectedOrganization || isImportingDemo}>
                     <MessageSquare className="mr-2 h-4 w-4" />
-                    {serverOrg ? (isImportingDemo ? "取込中..." : "デモ口コミを投入") : "組織選択が必要"}
+                    {hasSelectedOrganization ? (isImportingDemo ? "取込中..." : "デモ口コミを投入") : "組織選択が必要"}
                   </Button>
                   <Button className="w-full justify-start" variant="ghost">
                     <BarChart3 className="mr-2 h-4 w-4" />

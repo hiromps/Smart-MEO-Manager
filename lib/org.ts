@@ -48,8 +48,14 @@ export async function getCurrentOrg() {
     return null;
   }
 
-  const organization = await db.organization.findUnique({
+  const organization = await db.organization.upsert({
     where: { clerkId: orgId },
+    update: {},
+    create: {
+      clerkId: orgId,
+      name: "Clerk Organization",
+      slug: orgId,
+    },
   });
 
   return organization;

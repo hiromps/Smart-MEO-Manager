@@ -1,5 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "./db";
+import { syncCurrentUser } from "./org";
+
+function mapSessionRoleToMemberRole(orgRole: string | null | undefined) {
+  return orgRole === "org:admin" ? "ADMIN" : "MEMBER";
+}
 
 /**
  * 現在のセッションからテナント(Organization)とユーザー情報を取得するユーティリティ
@@ -17,15 +22,38 @@ export async function requireOrgContext() {
     throw new Error("Organization selection is required");
   }
 
-  // DB上で該当のOrganizationとUserが存在するか、および権限を確認
-  const member = await db.member.findFirst({
+  const user = await syncCurrentUser();
+
+  if (!user) {
+    throw new Error("Unauthorized");
+  }
+
+  const organization = await db.organization.upsert({
     where: {
-      user: {
-        clerkId: session.userId,
+      clerkId: session.orgId,
+    },
+    update: {},
+    create: {
+      clerkId: session.orgId,
+      name: "Clerk Organization",
+      slug: session.orgId,
+    },
+  });
+
+  const member = await db.member.upsert({
+    where: {
+      userId_organizationId: {
+        userId: user.id,
+        organizationId: organization.id,
       },
-      organization: {
-        clerkId: session.orgId,
-      },
+    },
+    update: {
+      role: mapSessionRoleToMemberRole((session as { orgRole?: string | null }).orgRole),
+    },
+    create: {
+      userId: user.id,
+      organizationId: organization.id,
+      role: mapSessionRoleToMemberRole((session as { orgRole?: string | null }).orgRole),
     },
     include: {
       organization: true,
