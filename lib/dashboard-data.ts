@@ -2,8 +2,40 @@ import { DraftStatus, ReplyStatus } from "@prisma/client";
 import { formatDistanceToNow } from "date-fns";
 import { ja } from "date-fns/locale";
 import { db } from "./db";
-import { buildDemoBusinessProfileDataset } from "./demo-data";
+import { buildDemoBusinessProfileDataset, type DemoKeywordRanking } from "./demo-data";
 import { getGoogleBusinessProfileAdapter } from "./google-business-profile";
+
+type RankingHistoryPoint = {
+    date: string;
+    rank: number;
+};
+
+type RankingKeyword = {
+    id: string;
+    keyword: string;
+    locationId: string;
+    locationName: string;
+    currentRank: number;
+    previousRank: number;
+    bestRank: number;
+    averageRank: number;
+    change: number;
+    history: RankingHistoryPoint[];
+};
+
+type ReviewListItem = {
+    id: string;
+    author: string;
+    rating: number;
+    comment: string;
+    date: string;
+    status: "pending" | "draft" | "posted";
+    location: string;
+    locationId: string;
+    draftContent: string | null;
+    draftStatus: DraftStatus | null;
+    replyComment: string | null;
+};
 
 export type DashboardData = {
     isDemo: boolean;
@@ -24,6 +56,13 @@ export type DashboardData = {
     };
     reviewTrends: Array<{ date: string; reviews: number; rating: number }>;
     insights: Array<{ date: string; searches: number; views: number }>;
+    rankingKeywords: RankingKeyword[];
+    rankingSummary: {
+        trackedKeywordCount: number;
+        topThreeCount: number;
+        improvedKeywordCount: number;
+        alertCount: number;
+    };
     recentReviews: Array<{
         id: string;
         author: string;
@@ -33,6 +72,7 @@ export type DashboardData = {
         status: "pending" | "draft" | "posted";
         location: string;
     }>;
+    reviews: ReviewListItem[];
     locationStats: Array<{
         id: string;
         name: string;
@@ -49,6 +89,14 @@ type ReviewForDashboard = {
     reviewerName: string;
     createTime: Date;
     replyStatus: ReplyStatus;
+    reply: {
+        comment: string;
+        updateTime: Date;
+    } | null;
+    latestAIDraft: {
+        draftContent: string;
+        status: DraftStatus;
+    } | null;
     location: {
         id: string;
         name: string;
@@ -69,6 +117,22 @@ function toReviewBadgeStatus(status: ReplyStatus): "pending" | "draft" | "posted
     }
 
     return "pending";
+}
+
+function buildReviewListItems(reviews: ReviewForDashboard[]): ReviewListItem[] {
+    return reviews.map((review) => ({
+        id: review.id,
+        author: review.reviewerName,
+        rating: review.starRating,
+        comment: review.comment ?? "コメントなし",
+        date: formatRelativeDate(review.createTime),
+        status: toReviewBadgeStatus(review.replyStatus),
+        location: review.location.name,
+        locationId: review.location.id,
+        draftContent: review.latestAIDraft?.draftContent ?? null,
+        draftStatus: review.latestAIDraft?.status ?? null,
+        replyComment: review.reply?.comment ?? null,
+    }));
 }
 
 function buildLastSixMonthLabels(now: Date) {
@@ -131,6 +195,59 @@ function buildLocationStats(reviews: ReviewForDashboard[], locationOptions: Arra
         });
 }
 
+function buildRankingKeywords(rankings: DemoKeywordRanking[], locations: Array<{ id: string; name: string }>): RankingKeyword[] {
+    return rankings.map((ranking) => {
+        const location = locations.find((item) => item.id === ranking.locationGoogleId);
+        const history = ranking.history;
+        const currentRank = history[history.length - 1]?.rank ?? 0;
+        const previousRank = history[history.length - 2]?.rank ?? currentRank;
+        const bestRank = history.reduce((best, point) => Math.min(best, point.rank), currentRank || 999);
+        const averageRank = history.length > 0
+            ? Number((history.reduce((sum, point) => sum + point.rank, 0) / history.length).toFixed(1))
+            : 0;
+
+        return {
+            id: ranking.id,
+            keyword: ranking.keyword,
+            locationId: ranking.locationGoogleId,
+            locationName: location?.name ?? "未設定店舗",
+            currentRank,
+            previousRank,
+            bestRank,
+            averageRank,
+            change: previousRank - currentRank,
+            history,
+        };
+    });
+}
+
+function buildRankingSummary(rankings: RankingKeyword[]) {
+    return {
+        trackedKeywordCount: rankings.length,
+        topThreeCount: rankings.filter((ranking) => ranking.currentRank > 0 && ranking.currentRank <= 3).length,
+        improvedKeywordCount: rankings.filter((ranking) => ranking.change > 0).length,
+        alertCount: rankings.filter((ranking) => ranking.currentRank >= 10 || ranking.change <= -3).length,
+    };
+}
+
+function buildSyntheticKeywordRankings(locations: Array<{ id: string; name: string }>): DemoKeywordRanking[] {
+    const seedKeywords = ["ランチ", "カフェ", "ディナー", "テイクアウト"];
+    const baseHistory = [9, 8, 8, 7, 6, 6, 5];
+
+    return locations
+        .filter((location) => location.id !== "all")
+        .slice(0, 4)
+        .map((location, index) => ({
+            id: `synthetic-rank-${location.id}`,
+            keyword: `${location.name} ${seedKeywords[index % seedKeywords.length]}`,
+            locationGoogleId: location.id,
+            history: baseHistory.map((rank, historyIndex) => ({
+                date: `D${historyIndex + 1}`,
+                rank: Math.max(1, rank + index - (historyIndex % 2 === 0 ? 0 : 1)),
+            })),
+        }));
+}
+
 function buildSummary(reviews: ReviewForDashboard[], generatedThisMonth: number, approvedDrafts: number, totalDrafts: number) {
     const totalReviews = reviews.length;
     const averageRating = totalReviews > 0
@@ -161,6 +278,7 @@ function buildSummary(reviews: ReviewForDashboard[], generatedThisMonth: number,
 function buildDashboardDataFromReviews(
     reviews: ReviewForDashboard[],
     insights: Array<{ date: string; searches: number; views: number }>,
+    keywordRankings: DemoKeywordRanking[],
     generatedThisMonth: number,
     approvedDrafts: number,
     totalDrafts: number,
@@ -171,6 +289,8 @@ function buildDashboardDataFromReviews(
         { id: "all", name: "全店舗" },
         ...uniqueLocations.map((location) => ({ id: location.id, name: location.name })),
     ];
+    const rankingKeywords = buildRankingKeywords(keywordRankings, uniqueLocations.map((location) => ({ id: location.id, name: location.name })));
+    const reviewItems = buildReviewListItems(reviews);
 
     return {
         isDemo,
@@ -179,15 +299,18 @@ function buildDashboardDataFromReviews(
         summary: buildSummary(reviews, generatedThisMonth, approvedDrafts, totalDrafts),
         reviewTrends: buildReviewTrends(reviews),
         insights,
-        recentReviews: reviews.slice(0, 4).map((review) => ({
+        rankingKeywords,
+        rankingSummary: buildRankingSummary(rankingKeywords),
+        recentReviews: reviewItems.slice(0, 4).map((review) => ({
             id: review.id,
-            author: review.reviewerName,
-            rating: review.starRating,
-            comment: review.comment ?? "コメントなし",
-            date: formatRelativeDate(review.createTime),
-            status: toReviewBadgeStatus(review.replyStatus),
-            location: review.location.name,
+            author: review.author,
+            rating: review.rating,
+            comment: review.comment,
+            date: review.date,
+            status: review.status,
+            location: review.location,
         })),
+        reviews: reviewItems,
         locationStats: buildLocationStats(reviews, locationOptions),
     };
 }
@@ -209,6 +332,8 @@ function buildDemoDashboardData(): DashboardData {
                 reviewerName: review.reviewerName,
                 createTime: review.createTime,
                 replyStatus: review.replyStatus,
+                reply: review.reply ?? null,
+                latestAIDraft: review.aiDraft ?? null,
                 location: {
                     id: location.googleLocationId,
                     name: location.name,
@@ -221,7 +346,7 @@ function buildDemoDashboardData(): DashboardData {
     const generatedThisMonth = dataset.reviews.filter((review) => review.aiDraft).length;
     const approvedDrafts = dataset.reviews.filter((review) => review.aiDraft?.status === DraftStatus.APPROVED).length;
 
-    return buildDashboardDataFromReviews(reviews, dataset.insights, generatedThisMonth, approvedDrafts, generatedThisMonth, true);
+    return buildDashboardDataFromReviews(reviews, dataset.insights, dataset.keywordRankings, generatedThisMonth, approvedDrafts, generatedThisMonth, true);
 }
 
 export async function getDashboardData(organizationId: string | null): Promise<DashboardData> {
@@ -255,6 +380,22 @@ export async function getDashboardData(organizationId: string | null): Promise<D
                     select: {
                         id: true,
                         name: true,
+                    },
+                },
+                reply: {
+                    select: {
+                        comment: true,
+                        updateTime: true,
+                    },
+                },
+                aiDrafts: {
+                    orderBy: {
+                        createdAt: "desc",
+                    },
+                    take: 1,
+                    select: {
+                        draftContent: true,
+                        status: true,
                     },
                 },
             },
@@ -296,5 +437,15 @@ export async function getDashboardData(organizationId: string | null): Promise<D
         }),
     ]);
 
-    return buildDashboardDataFromReviews(reviews, insights, generatedThisMonth, approvedDrafts, totalDrafts, false);
+    const uniqueLocations = Array.from(new Map(reviews.map((review) => [review.location.id, review.location])).values());
+    const syntheticRankings = buildSyntheticKeywordRankings(uniqueLocations.map((location) => ({
+        id: location.id,
+        name: location.name,
+    })));
+
+    return buildDashboardDataFromReviews(reviews.map((review) => ({
+        ...review,
+        reply: review.reply,
+        latestAIDraft: review.aiDrafts[0] ?? null,
+    })), insights, syntheticRankings, generatedThisMonth, approvedDrafts, totalDrafts, false);
 }

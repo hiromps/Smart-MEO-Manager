@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react"
 import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs"
+import { useRouter } from "next/navigation"
 import {
   Star,
   MessageSquare,
@@ -42,6 +43,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Area,
   AreaChart,
@@ -101,11 +103,17 @@ interface DashboardProps {
 
 export default function Dashboard({ serverOrg, serverUser, dashboardData, initialSection }: DashboardProps) {
   const { orgId } = useAuth()
+  const router = useRouter()
   const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(dashboardData.locationOptions[0]?.id ?? "all")
   const [isImportingDemo, startImportTransition] = useTransition()
   const [activeSection, setActiveSection] = useState(() => getValidSection(initialSection))
+  const [selectedRankingId, setSelectedRankingId] = useState(dashboardData.rankingKeywords[0]?.id ?? "")
+  const [reviewSearch, setReviewSearch] = useState("")
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<"all" | "pending" | "draft" | "posted">("all")
+  const [draftEdits, setDraftEdits] = useState<Record<string, string>>({})
+  const [activeReviewActionId, setActiveReviewActionId] = useState<string | null>(null)
   const hasSelectedOrganization = Boolean(orgId)
 
   useEffect(() => {
@@ -140,6 +148,177 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData, initia
 
     return dashboardData.locationStats.filter((location) => location.id === selectedLocation)
   }, [dashboardData.locationStats, selectedLocation])
+
+  const filteredRankingKeywords = useMemo(() => {
+    if (selectedLocation === "all") {
+      return dashboardData.rankingKeywords
+    }
+
+    return dashboardData.rankingKeywords.filter((ranking) => ranking.locationId === selectedLocation)
+  }, [dashboardData.rankingKeywords, selectedLocation])
+
+  useEffect(() => {
+    const nextSelectedRankingId = filteredRankingKeywords[0]?.id ?? ""
+
+    if (!filteredRankingKeywords.some((ranking) => ranking.id === selectedRankingId)) {
+      setSelectedRankingId(nextSelectedRankingId)
+    }
+  }, [filteredRankingKeywords, selectedRankingId])
+
+  const selectedRanking = filteredRankingKeywords.find((ranking) => ranking.id === selectedRankingId) ?? filteredRankingKeywords[0] ?? null
+
+  const filteredReviews = useMemo(() => {
+    return dashboardData.reviews.filter((review) => {
+      const matchesLocation = selectedLocation === "all" || review.locationId === selectedLocation
+      const matchesStatus = reviewStatusFilter === "all" || review.status === reviewStatusFilter
+      const search = reviewSearch.trim().toLowerCase()
+      const matchesSearch = search.length === 0
+        || review.author.toLowerCase().includes(search)
+        || review.comment.toLowerCase().includes(search)
+        || review.location.toLowerCase().includes(search)
+
+      return matchesLocation && matchesStatus && matchesSearch
+    })
+  }, [dashboardData.reviews, reviewSearch, reviewStatusFilter, selectedLocation])
+
+  const getDraftValue = (reviewId: string, draftContent: string | null) => {
+    return draftEdits[reviewId] ?? draftContent ?? ""
+  }
+
+  const updateDraftValue = (reviewId: string, value: string) => {
+    setDraftEdits((current) => ({
+      ...current,
+      [reviewId]: value,
+    }))
+  }
+
+  const runReviewAction = async (reviewId: string, action: () => Promise<void>) => {
+    setActiveReviewActionId(reviewId)
+
+    try {
+      await action()
+      router.refresh()
+    } finally {
+      setActiveReviewActionId(null)
+    }
+  }
+
+  const handleGenerateDraft = async (reviewId: string) => {
+    try {
+      await runReviewAction(reviewId, async () => {
+        const response = await fetch(`/api/reviews/${reviewId}/generate-draft`, { method: "POST" })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "AI返信の生成に失敗しました。")
+        }
+
+        updateDraftValue(reviewId, payload.draft.draftContent)
+        toast({
+          title: "AI返信案を生成しました",
+          description: "内容を確認して保存、承認、投稿に進めます。",
+        })
+      })
+    } catch (error) {
+      toast({
+        title: "生成に失敗しました",
+        description: error instanceof Error ? error.message : "AI返信の生成に失敗しました。",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleSaveDraft = async (reviewId: string, draftContent: string) => {
+    try {
+      await runReviewAction(reviewId, async () => {
+        const response = await fetch(`/api/reviews/${reviewId}/draft`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ draftContent }),
+        })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "下書きの保存に失敗しました。")
+        }
+
+        updateDraftValue(reviewId, payload.draft.draftContent)
+        toast({
+          title: "下書きを保存しました",
+          description: "承認前の内容として保存されています。",
+        })
+      })
+    } catch (error) {
+      toast({
+        title: "保存に失敗しました",
+        description: error instanceof Error ? error.message : "下書きの保存に失敗しました。",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleApproveDraft = async (reviewId: string, draftContent: string) => {
+    try {
+      await runReviewAction(reviewId, async () => {
+        const response = await fetch(`/api/reviews/${reviewId}/approve`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ draftContent }),
+        })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "承認処理に失敗しました。")
+        }
+
+        updateDraftValue(reviewId, payload.draft.draftContent)
+        toast({
+          title: "承認待ちにしました",
+          description: "内容を確認した上で投稿できます。",
+        })
+      })
+    } catch (error) {
+      toast({
+        title: "承認に失敗しました",
+        description: error instanceof Error ? error.message : "承認処理に失敗しました。",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handlePublishReply = async (reviewId: string, replyContent: string) => {
+    try {
+      await runReviewAction(reviewId, async () => {
+        const response = await fetch(`/api/reviews/${reviewId}/publish`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ replyContent }),
+        })
+        const payload = await response.json()
+
+        if (!response.ok) {
+          throw new Error(payload.error ?? "返信投稿に失敗しました。")
+        }
+
+        toast({
+          title: "返信を投稿しました",
+          description: "口コミが返信済みとして更新されました。",
+        })
+      })
+    } catch (error) {
+      toast({
+        title: "投稿に失敗しました",
+        description: error instanceof Error ? error.message : "返信投稿に失敗しました。",
+        variant: "destructive",
+      })
+    }
+  }
 
   const handleImportDemoData = () => {
     startImportTransition(async () => {
@@ -502,23 +681,113 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData, initia
     <Card className="bg-card border-border">
       <CardHeader>
         <CardTitle className="text-base font-medium">口コミ一覧</CardTitle>
-        <CardDescription className="text-muted-foreground">選択店舗の口コミを確認し、返信ステータスごとに追えます。</CardDescription>
+        <CardDescription className="text-muted-foreground">MVPでは一覧確認、絞り込み、AI返信案の生成、承認、投稿まで行えます。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {filteredRecentReviews.map((review) => (
-          <div key={review.id} className="rounded-lg border border-border p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-foreground">{review.author}</span>
-                {renderStars(review.rating)}
-                {getStatusBadge(review.status)}
-              </div>
-              <span className="text-xs text-muted-foreground">{review.date}</span>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{review.comment}</p>
-            <p className="mt-2 text-xs text-muted-foreground">店舗: {review.location}</p>
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_180px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={reviewSearch}
+              onChange={(event) => setReviewSearch(event.target.value)}
+              placeholder="投稿者名・口コミ本文・店舗名で検索"
+              className="pl-9"
+            />
           </div>
-        ))}
+          <Select value={reviewStatusFilter} onValueChange={(value: "all" | "pending" | "draft" | "posted") => setReviewStatusFilter(value)}>
+            <SelectTrigger className="bg-secondary border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">すべての状態</SelectItem>
+              <SelectItem value="pending">未対応</SelectItem>
+              <SelectItem value="draft">下書き・承認待ち</SelectItem>
+              <SelectItem value="posted">返信済み</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {filteredReviews.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            条件に合う口コミはありません。
+          </div>
+        )}
+
+        {filteredReviews.map((review) => {
+          const draftValue = getDraftValue(review.id, review.draftContent)
+          const isBusy = activeReviewActionId === review.id
+
+          return (
+            <div key={review.id} className="rounded-lg border border-border p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-foreground">{review.author}</span>
+                    {renderStars(review.rating)}
+                    {getStatusBadge(review.status)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">{review.comment}</p>
+                  <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                    <span>店舗: {review.location}</span>
+                    <span>{review.date}</span>
+                    {review.draftStatus && <span>下書き状態: {review.draftStatus}</span>}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" disabled={!hasSelectedOrganization || isBusy} onClick={() => handleGenerateDraft(review.id)}>
+                    <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                    AI生成
+                  </Button>
+                </div>
+              </div>
+
+              {review.replyComment && (
+                <div className="mt-4 rounded-lg bg-secondary/50 p-3">
+                  <p className="text-xs font-medium text-muted-foreground">投稿済み返信</p>
+                  <p className="mt-1 text-sm text-foreground">{review.replyComment}</p>
+                </div>
+              )}
+
+              <div className="mt-4 space-y-3">
+                <div>
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">AI返信案</p>
+                  <Textarea
+                    value={draftValue}
+                    onChange={(event) => updateDraftValue(review.id, event.target.value)}
+                    placeholder="AI返信案を生成するか、手動で入力してください。"
+                    className="min-h-[120px]"
+                    disabled={isBusy}
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={!hasSelectedOrganization || isBusy || draftValue.trim().length === 0}
+                    onClick={() => handleSaveDraft(review.id, draftValue)}
+                  >
+                    下書き保存
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!hasSelectedOrganization || isBusy || draftValue.trim().length === 0}
+                    onClick={() => handleApproveDraft(review.id, draftValue)}
+                  >
+                    承認待ちにする
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!hasSelectedOrganization || isBusy || draftValue.trim().length === 0}
+                    onClick={() => handlePublishReply(review.id, draftValue)}
+                  >
+                    返信を投稿
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </CardContent>
     </Card>
   )
@@ -528,18 +797,36 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData, initia
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-base font-medium">口コミ推移</CardTitle>
-            <CardDescription className="text-muted-foreground">月別の口コミ件数を確認できます。</CardDescription>
+            <CardTitle className="text-base font-medium">順位チャート</CardTitle>
+            <CardDescription className="text-muted-foreground">選択したキーワードの検索順位推移を確認できます。数値が小さいほど上位です。</CardDescription>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">{selectedRanking?.keyword ?? "キーワード未設定"}</p>
+                <p className="text-xs text-muted-foreground">{selectedRanking?.locationName ?? "店舗未設定"}</p>
+              </div>
+              <Select value={selectedRanking?.id ?? ""} onValueChange={setSelectedRankingId}>
+                <SelectTrigger className="w-full bg-secondary border-border md:w-[260px]">
+                  <SelectValue placeholder="キーワードを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredRankingKeywords.map((ranking) => (
+                    <SelectItem key={ranking.id} value={ranking.id}>
+                      {ranking.keyword}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="h-[280px] min-w-0">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
-                <RechartsBarChart data={dashboardData.reviewTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <RechartsBarChart data={selectedRanking?.history ?? []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+                  <YAxis reversed domain={[20, 1]} axisLine={false} tickLine={false} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
                   <Tooltip />
-                  <Bar dataKey="reviews" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="rank" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </RechartsBarChart>
               </ResponsiveContainer>
             </div>
@@ -548,8 +835,8 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData, initia
 
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-base font-medium">検索・閲覧データ</CardTitle>
-            <CardDescription className="text-muted-foreground">検索表示と閲覧数の推移です。</CardDescription>
+            <CardTitle className="text-base font-medium">インサイト推移</CardTitle>
+            <CardDescription className="text-muted-foreground">Google 検索表示と閲覧数の推移です。</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-[280px] min-w-0">
@@ -569,24 +856,58 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData, initia
       </div>
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="text-base font-medium">主要指標</CardTitle>
+          <CardTitle className="text-base font-medium">キーワード分析</CardTitle>
+          <CardDescription className="text-muted-foreground">現在順位、前回差分、ベスト順位を一覧で確認できます。</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div>
-            <p className="text-xs text-muted-foreground">平均評価</p>
-            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.averageRating.toFixed(1)}</p>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <div>
+              <p className="text-xs text-muted-foreground">計測キーワード数</p>
+              <p className="text-2xl font-semibold text-foreground">{filteredRankingKeywords.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">3位以内</p>
+              <p className="text-2xl font-semibold text-foreground">{filteredRankingKeywords.filter((ranking) => ranking.currentRank <= 3).length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">改善中</p>
+              <p className="text-2xl font-semibold text-foreground">{filteredRankingKeywords.filter((ranking) => ranking.change > 0).length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">要確認</p>
+              <p className="text-2xl font-semibold text-foreground">{filteredRankingKeywords.filter((ranking) => ranking.currentRank >= 10 || ranking.change <= -3).length}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">返信率</p>
-            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.responseRate}%</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">承認待ち</p>
-            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.pendingApprovalReviews}</p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">店舗数</p>
-            <p className="text-2xl font-semibold text-foreground">{dashboardData.summary.locationCount}</p>
+
+          <div className="space-y-3">
+            {filteredRankingKeywords.map((ranking) => (
+              <div key={ranking.id} className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-foreground">{ranking.keyword}</p>
+                  <p className="text-sm text-muted-foreground">{ranking.locationName}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4 md:gap-6">
+                  <div>
+                    <p className="text-xs text-muted-foreground">現在順位</p>
+                    <p className="font-semibold text-foreground">{ranking.currentRank}位</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">前回差分</p>
+                    <p className={`${ranking.change > 0 ? "text-emerald-600" : ranking.change < 0 ? "text-destructive" : "text-foreground"} font-semibold`}>
+                      {ranking.change > 0 ? `+${ranking.change}` : ranking.change}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">ベスト順位</p>
+                    <p className="font-semibold text-foreground">{ranking.bestRank}位</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">平均順位</p>
+                    <p className="font-semibold text-foreground">{ranking.averageRank}位</p>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>

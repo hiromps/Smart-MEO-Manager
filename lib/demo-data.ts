@@ -6,6 +6,16 @@ export type DemoInsightsPoint = {
     views: number;
 };
 
+export type DemoKeywordRanking = {
+    id: string;
+    keyword: string;
+    locationGoogleId: string;
+    history: Array<{
+        date: string;
+        rank: number;
+    }>;
+};
+
 export type DemoLocation = {
     googleLocationId: string;
     name: string;
@@ -44,6 +54,7 @@ export type DemoBusinessProfileDataset = {
         targetStarRating: number | null;
     }>;
     insights: DemoInsightsPoint[];
+    keywordRankings: DemoKeywordRanking[];
 };
 
 function addDays(baseDate: Date, diff: number) {
@@ -221,6 +232,64 @@ export function buildDemoBusinessProfileDataset(namespace = "demo"): DemoBusines
             { date: "金", searches: 1800, views: 1250 },
             { date: "土", searches: 2200, views: 1600 },
             { date: "日", searches: 2000, views: 1400 },
+        ],
+        keywordRankings: [
+            {
+                id: `rank-${namespace}-001`,
+                keyword: "新宿 カフェ wifi",
+                locationGoogleId: locations[0].googleLocationId,
+                history: [
+                    { date: "4/1", rank: 8 },
+                    { date: "4/2", rank: 7 },
+                    { date: "4/3", rank: 6 },
+                    { date: "4/4", rank: 6 },
+                    { date: "4/5", rank: 5 },
+                    { date: "4/6", rank: 4 },
+                    { date: "4/7", rank: 3 },
+                ],
+            },
+            {
+                id: `rank-${namespace}-002`,
+                keyword: "渋谷 ランチ おしゃれ",
+                locationGoogleId: locations[1].googleLocationId,
+                history: [
+                    { date: "4/1", rank: 5 },
+                    { date: "4/2", rank: 5 },
+                    { date: "4/3", rank: 6 },
+                    { date: "4/4", rank: 4 },
+                    { date: "4/5", rank: 4 },
+                    { date: "4/6", rank: 3 },
+                    { date: "4/7", rank: 2 },
+                ],
+            },
+            {
+                id: `rank-${namespace}-003`,
+                keyword: "池袋 ディナー 女子会",
+                locationGoogleId: locations[2].googleLocationId,
+                history: [
+                    { date: "4/1", rank: 12 },
+                    { date: "4/2", rank: 11 },
+                    { date: "4/3", rank: 10 },
+                    { date: "4/4", rank: 10 },
+                    { date: "4/5", rank: 9 },
+                    { date: "4/6", rank: 8 },
+                    { date: "4/7", rank: 8 },
+                ],
+            },
+            {
+                id: `rank-${namespace}-004`,
+                keyword: "新宿 居酒屋 深夜",
+                locationGoogleId: locations[0].googleLocationId,
+                history: [
+                    { date: "4/1", rank: 3 },
+                    { date: "4/2", rank: 4 },
+                    { date: "4/3", rank: 4 },
+                    { date: "4/4", rank: 5 },
+                    { date: "4/5", rank: 4 },
+                    { date: "4/6", rank: 4 },
+                    { date: "4/7", rank: 3 },
+                ],
+            },
         ],
     };
 }
