@@ -1,8 +1,7 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs"
-import { useRouter, useSearchParams } from "next/navigation"
 import {
   Star,
   MessageSquare,
@@ -56,6 +55,31 @@ import {
 } from "recharts"
 import type { DashboardData } from "@/lib/dashboard-data"
 
+const navItems = [
+  { id: "dashboard", icon: LayoutDashboard, label: "ダッシュボード" },
+  { id: "reviews", icon: MessageSquare, label: "口コミ管理" },
+  { id: "analytics", icon: BarChart3, label: "MEO分析" },
+  { id: "ai-settings", icon: Sparkles, label: "AI返信設定" },
+  { id: "templates", icon: FileText, label: "テンプレート" },
+  { id: "locations", icon: Store, label: "店舗管理" },
+  { id: "settings", icon: Settings, label: "設定" },
+] as const
+
+const mobileNavItems = [
+  navItems[0],
+  navItems[1],
+  navItems[2],
+  navItems[5],
+]
+
+function getValidSection(section: string | null | undefined) {
+  return navItems.some((item) => item.id === section) ? section : "dashboard"
+}
+
+function getSectionHref(sectionId: string) {
+  return sectionId === "dashboard" ? "/" : `/?section=${sectionId}`
+}
+
 interface DashboardProps {
   serverOrg: {
     id: string;
@@ -72,39 +96,31 @@ interface DashboardProps {
     imageUrl: string | null;
   } | null;
   dashboardData: DashboardData;
+  initialSection?: string;
 }
 
-export default function Dashboard({ serverOrg, serverUser, dashboardData }: DashboardProps) {
+export default function Dashboard({ serverOrg, serverUser, dashboardData, initialSection }: DashboardProps) {
   const { orgId } = useAuth()
-  const router = useRouter()
-  const searchParams = useSearchParams()
   const { toast } = useToast()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(dashboardData.locationOptions[0]?.id ?? "all")
   const [isImportingDemo, startImportTransition] = useTransition()
+  const [activeSection, setActiveSection] = useState(() => getValidSection(initialSection))
   const hasSelectedOrganization = Boolean(orgId)
 
-  const navItems = [
-    { id: "dashboard", icon: LayoutDashboard, label: "ダッシュボード" },
-    { id: "reviews", icon: MessageSquare, label: "口コミ管理" },
-    { id: "analytics", icon: BarChart3, label: "MEO分析" },
-    { id: "ai-settings", icon: Sparkles, label: "AI返信設定" },
-    { id: "templates", icon: FileText, label: "テンプレート" },
-    { id: "locations", icon: Store, label: "店舗管理" },
-    { id: "settings", icon: Settings, label: "設定" },
-  ]
+  useEffect(() => {
+    setActiveSection(getValidSection(initialSection))
+  }, [initialSection])
 
-  const mobileNavItems = [
-    navItems[0],
-    navItems[1],
-    navItems[2],
-    navItems[5],
-  ]
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search)
+      setActiveSection(getValidSection(params.get("section")))
+    }
 
-  const activeSection = useMemo(() => {
-    const section = searchParams.get("section")
-    return navItems.some((item) => item.id === section) ? section! : "dashboard"
-  }, [searchParams])
+    window.addEventListener("popstate", handlePopState)
+    return () => window.removeEventListener("popstate", handlePopState)
+  }, [])
 
   const activeNavItem = navItems.find((item) => item.id === activeSection) ?? navItems[0]
 
@@ -158,8 +174,10 @@ export default function Dashboard({ serverOrg, serverUser, dashboardData }: Dash
   }
 
   const handleSectionChange = (sectionId: string) => {
-    const href = sectionId === "dashboard" ? "/" : `/?section=${sectionId}`
-    router.push(href, { scroll: false })
+    const nextSection = getValidSection(sectionId)
+
+    setActiveSection(nextSection)
+    window.history.pushState(null, "", getSectionHref(nextSection))
     setSidebarOpen(false)
   }
 

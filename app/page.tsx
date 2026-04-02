@@ -5,8 +5,15 @@ import { getCurrentOrg, getCurrentUser } from "@/lib/org";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 
-export default async function Home() {
+type HomeProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function Home({ searchParams }: HomeProps) {
   const { userId, orgId } = await auth();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const sectionParam = resolvedSearchParams?.section;
+  const initialSection = Array.isArray(sectionParam) ? sectionParam[0] : sectionParam;
 
   if (!userId) {
     redirect("/sign-in");
@@ -19,7 +26,12 @@ export default async function Home() {
 
   return (
     <Suspense fallback={<div>Loading Dashboard...</div>}>
-      <Dashboard serverOrg={org} serverUser={user} dashboardData={dashboardData} />
+      <Dashboard
+        serverOrg={org}
+        serverUser={user}
+        dashboardData={dashboardData}
+        initialSection={initialSection}
+      />
     </Suspense>
   );
 }
